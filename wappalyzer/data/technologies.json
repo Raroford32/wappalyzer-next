@@ -2926,6 +2926,23 @@
         "scriptSrc": "\\.advin\\.cz/",
         "website": "https://www.advin.cz"
     },
+    "Adwos CMS": {
+        "cats": [
+            1
+        ],
+        "description": "Adwos CMS is a content management system for classified ads, marketplaces, and rental services.",
+        "icon": "Adwos CMS.svg",
+        "meta": {
+            "adwos:powered-by": "^Adwos CMS$",
+            "application-name": "^Adwos CMS$",
+            "generator": "^Adwos CMS$"
+        },
+        "pricing": [
+            "low",
+            "onetime"
+        ],
+        "website": "https://adwos.org"
+    },
     "Adyen": {
         "cats": [
             41
@@ -5455,7 +5472,7 @@
             66
         ],
         "description": "Ant Design is an UI library that can be used with data flow solutions and application frameworks in any React ecosystem.",
-        "dom": "div[class*='ant-collapse'], link[href*='antd'], div[class*='ant-spin-container']",
+        "dom": "div[class*='ant-collapse'], link[href*='antd'], div[class*='ant-spin-container'], form.ant-form .ant-form-item .ant-input",
         "icon": "Ant Design.svg",
         "js": {
             "__ANTD_STYLE_CACHE_MANAGER_FOR_SSR__": "",
@@ -5583,6 +5600,7 @@
             "techaro.lol-anubis-cookie-verification": ""
         },
         "description": "Anubis is a system that evaluates the characteristics of incoming HTTP requests to determine their legitimacy and enhance website protection.",
+        "dom": "script#anubis_version[type='application/json'], script#anubis_challenge[type='application/json']",
         "icon": "Anubis.svg",
         "oss": true,
         "website": "https://anubis.techaro.lol"
@@ -7166,10 +7184,7 @@
             "recurring"
         ],
         "saas": true,
-        "scriptSrc": [
-            "app\\.askspot\\.ai",
-            "chat\\.askspot\\.io/api/v1/integration/"
-        ],
+        "scriptSrc": "chat\\.askspot\\.io/api/v1/integration/",
         "scripts": "chat\\.askspot\\.io/api/v1/chat-widget/",
         "website": "https://askspot.io"
     },
@@ -10441,7 +10456,8 @@
         ],
         "saas": true,
         "scriptSrc": "//(?:uptime\\.)?(?:betteruptime|betterstack)\\.com/",
-        "website": "https://betterstack.com/uptime"
+        "website": "https://betterstack.com/uptime",
+        "xhr": "\\.betterstackdata\\.com/"
     },
     "BetterBot": {
         "cats": [
@@ -11019,11 +11035,18 @@
             53
         ],
         "description": "Bitrix24 is a set of tools for the organization and management of business processes.",
+        "headers": {
+            "server": "^Bitrix24\\.Sites$",
+            "x-powered-cms": "^Bitrix24\\.Sites$"
+        },
         "icon": "Bitrix24.svg",
         "js": {
             "Bitrix24FormLoader": "",
             "Bitrix24FormObject": "",
             "b24Tracker": ""
+        },
+        "meta": {
+            "bitrix24sitetype": ""
         },
         "pricing": [
             "freemium",
@@ -11033,6 +11056,7 @@
         "saas": true,
         "scriptSrc": [
             "cdn\\.bitrix24\\.com",
+            "cdn-[a-z]+\\.bitrix24\\.[a-z.]+/",
             "\\.bitrix24\\..+/bitrix/js/crm/form_loader\\.js"
         ],
         "website": "https://www.bitrix24.com"
@@ -12586,6 +12610,7 @@
         "headers": {
             "x-powered-by": "^Bool Typescript$"
         },
+        "icon": "Booljs.svg",
         "oss": true,
         "website": "https://booljs.com"
     },
@@ -14813,10 +14838,10 @@
         "icon": "CKEditor.svg",
         "js": {
             "CKEDITOR": "",
-            "CKEDITOR.version": "^([\\d\\.])$\\;version:\\1",
+            "CKEDITOR.version": "^([\\d.]+)$\\;version:\\1",
             "CKEDITOR_BASEPATH": "",
-            "CKEDITOR_VERSION": "^([\\d\\.])$\\;version:5-\\1",
-            "apex.libVersions.ckeditor5": "^([\\d\\.])$\\;version:5-\\1"
+            "CKEDITOR_VERSION": "^([\\d.]+)$\\;version:5-\\1",
+            "apex.libVersions.ckeditor5": "^([\\d.]+)$\\;version:5-\\1"
         },
         "website": "https://ckeditor.com"
     },
@@ -20235,6 +20260,7 @@
             6
         ],
         "description": "Comarch e-Sklep is an ecommerce platform for creating and managing an online store.",
+        "dom": "a[href*='comarchesklep.pl'][title*='Powered by Comarch e-Sklep']",
         "icon": "ComarcheSklep.svg",
         "pricing": [
             "low",
@@ -20486,6 +20512,7 @@
             6
         ],
         "description": "Commerce7 is an ecommerce platform for wineries.",
+        "dom": "script#c7-javascript[src*='cdn.commerce7.com'], link#commerce7-styles-css[href*='cdn.commerce7.com'], #commerce7-cart-container",
         "icon": "Commerce7.svg",
         "pricing": [
             "mid",
@@ -22472,7 +22499,7 @@
             "recurring"
         ],
         "saas": true,
-        "scriptSrc": "\\.covet\\.pics/",
+        "scriptSrc": "(?:\\.covet\\.pics/|@covet-pics/covet-pics-widget)",
         "website": "https://covet.pics"
     },
     "Cowboy": {
@@ -23875,6 +23902,17 @@
         "icon": "DM Polopoly.svg",
         "implies": "Java",
         "website": "https://www.atex.com/products/dm-polopoly"
+    },
+    "DMVCFramework": {
+        "cats": [
+            18
+        ],
+        "description": "DMVCFramework is an open-source Delphi framework for building web APIs and web applications.",
+        "headers": {
+            "X-Powered-By": "^DMVCFramework\\s*([\\w.-]+)?\\;version:\\1"
+        },
+        "oss": true,
+        "website": "https://github.com/danieleteti/delphimvcframework"
     },
     "DNN": {
         "cats": [
@@ -26008,6 +26046,9 @@
         "cpe": "cpe:2.3:a:elegantthemes:divi:*:*:*:*:*:wordpress:*:*",
         "description": "Divi is a WordPress Theme and standalone WordPress plugin from Elegant themes that allows users to build websites using the visual drag-and-drop Divi page builder.",
         "dom": {
+            "body.et_divi_theme, body.wp-theme-Divi, link#divi-style-parent-css[href*='/wp-content/themes/Divi/']": {
+                "exists": ""
+            },
             "style#divi-style-parent-inline-inline-css": {
                 "text": "Version\\:\\s([\\d\\.]+)\\;version:\\1"
             }
@@ -26028,7 +26069,10 @@
         ],
         "requires": "WordPress",
         "saas": true,
-        "scriptSrc": "Divi/js/custom\\.(?:min|unified)\\.js\\?ver=([\\d.]+)\\;version:\\1",
+        "scriptSrc": [
+            "Divi/js/custom\\.(?:min|unified)\\.js\\?ver=([\\d.]+)\\;version:\\1",
+            "wp-content/themes/Divi/js/(?:scripts\\.min|smoothscroll)\\.js\\?ver=([\\d.]+)\\;version:\\1"
+        ],
         "website": "https://www.elegantthemes.com/gallery/divi"
     },
     "Divide": {
@@ -26134,6 +26178,19 @@
         },
         "oss": true,
         "website": "https://github.com/dotnet/docfx"
+    },
+    "Docebo": {
+        "cats": [
+            21
+        ],
+        "description": "Docebo is a learning management system for delivering, managing, and tracking online training programs.",
+        "pricing": [
+            "poa",
+            "recurring"
+        ],
+        "saas": true,
+        "scriptSrc": "cdn\\d?\\.dcbstatic\\.com/(?:public/static-content/init|(?:main|scripts|polyfills)\\.)",
+        "website": "https://www.docebo.com"
     },
     "Docker": {
         "cats": [
@@ -27533,6 +27590,17 @@
         "scriptSrc": "download\\.digiaccess\\.org",
         "website": "https://www.digiaccess.org"
     },
+    "docmd": {
+        "cats": [
+            4
+        ],
+        "description": "docmd is an open-source documentation generator for building static documentation websites.",
+        "meta": {
+            "generator": "^docmd\\sv([\\d.x]+)$\\;version:\\1"
+        },
+        "oss": true,
+        "website": "https://docmd.io"
+    },
     "doxo": {
         "cats": [
             41
@@ -28543,6 +28611,7 @@
             "EditorJS": ""
         },
         "oss": true,
+        "scripts": "editorJs:\\{messages:\\{ui:\\{blockTunes",
         "website": "https://editorjs.io"
     },
     "Edlio": {
@@ -29411,12 +29480,14 @@
         "cats": [
             17
         ],
+        "css": "font\\.emtech\\.cc/css/[A-Za-z0-9_-]+",
         "description": "Emfont is an open-source CJK webfont service that enables self-hosted, cache-efficient, and privacy-conscious distribution of open-source fonts.",
         "icon": "Emfont.svg",
         "js": {
             "emfont.Emfont": ""
         },
         "saas": true,
+        "scriptSrc": "font\\.emtech\\.cc/emfont\\.js",
         "website": "https://font.emtech.cc"
     },
     "Emojicom": {
@@ -36070,6 +36141,29 @@
         "scripts": "\\.firstgiving\\.com",
         "website": "https://www.frontstream.com"
     },
+    "Froomle": {
+        "cats": [
+            76
+        ],
+        "description": "Froomle is an AI personalization platform for product and content recommendations across websites and digital channels.",
+        "dom": "[data-froomle-config], [data-froomle-reco], [data-froomle-request-id], [data-component='froomle/recommendations']",
+        "icon": "Froomle.png",
+        "js": {
+            "FroomleFrontendSdk": "",
+            "FroomleFrontendSdkRuntime": ""
+        },
+        "pricing": [
+            "poa",
+            "recurring"
+        ],
+        "saas": true,
+        "scriptSrc": [
+            "@froomle/frontend-sdk",
+            "(?:^|/)froomle(?:\\.global|\\.min)?(?:-[\\d.]+)?\\.js"
+        ],
+        "website": "https://www.froomle.ai",
+        "xhr": "\\.froomle\\.com/api/[^/]+/(?:events|recommendations/requests)"
+    },
     "Froonze": {
         "cats": [
             100
@@ -36639,6 +36733,7 @@
             "low",
             "recurring"
         ],
+        "scriptSrc": "/wp-content/plugins/webtoffee-cookie-consent/(?:[^/]+/)*frontend/js/(?:script|gcm)(?:\\.min)?\\.js",
         "website": "https://www.webtoffee.com/product/gdpr-cookie-consent/"
     },
     "GEODIS": {
@@ -37356,6 +37451,23 @@
         "scripts": "\\.chamo-chat\\.com/",
         "website": "https://chamo-chat.com"
     },
+    "Genlook Virtual try-on": {
+        "cats": [
+            100
+        ],
+        "description": "Genlook Virtual try-on is an AI-powered virtual fitting room app for Shopify stores.",
+        "icon": "Genlook.svg",
+        "implies": "Shopify",
+        "pricing": [
+            "freemium",
+            "low",
+            "recurring",
+            "payg"
+        ],
+        "saas": true,
+        "scriptSrc": "cdn\\.shopify\\.com/extensions/[^/]+/genlook-[^/]+/assets/",
+        "website": "https://genlook.app"
+    },
     "Gensolve": {
         "cats": [
             55
@@ -37406,8 +37518,8 @@
             "recurring"
         ],
         "saas": true,
-        "scripts": "api\\.geoapify\\.com",
-        "website": "https://www.geoapify.com"
+        "website": "https://www.geoapify.com",
+        "xhr": "(?:api|maps)\\.geoapify\\.com"
     },
     "Geobytes": {
         "cats": [
@@ -39261,10 +39373,7 @@
         },
         "saas": true,
         "scriptSrc": [
-            "googlesyndication\\.com/",
-            "ad\\.ca\\.doubleclick\\.net",
-            "2mdn\\.net",
-            "ad\\.ca\\.doubleclick\\.net"
+            "pagead2\\.googlesyndication\\.com/pagead/js/adsbygoogle\\.js"
         ],
         "website": "https://www.google.com/adsense/start/"
     },
@@ -41440,6 +41549,21 @@
         "scriptSrc": "cdn\\.blog\\.st-hatena\\.com/",
         "website": "https://hatenablog.com"
     },
+    "HatenaCMS": {
+        "cats": [
+            1
+        ],
+        "description": "HatenaCMS is a no-code content management system from Hatena for building and managing business websites and owned media sites.",
+        "dom": "link[href*='cms.hatena.ne.jp/_next/static/']",
+        "icon": "Hatena.svg",
+        "pricing": [
+            "poa",
+            "recurring"
+        ],
+        "saas": true,
+        "scriptSrc": "cms\\.hatena\\.ne\\.jp/_next/static/",
+        "website": "https://www.hatena.ne.jp/cms/"
+    },
     "HawkSearch": {
         "cats": [
             29
@@ -41900,14 +42024,22 @@
             66
         ],
         "css": "--nextui-(?:colors-accents1|colors-text|space-0|fonts-sans|fonts-mono)",
-        "description": "HeroUI allows you to make beautiful, modern, and fast websites/applications regardless of your design experience, created with React.js and Stitches, based on React Aria and inspired by Vuesax.",
-        "dom": "link[href*='nextui.org'][rel='canonical']",
+        "description": "HeroUI is an open-source React UI library with accessible components built on React Aria and Tailwind CSS.",
+        "dom": [
+            "link[href*='nextui.org'][rel='canonical']",
+            "link[href*='heroui.com'][rel='canonical']"
+        ],
         "icon": "HeroUI.svg",
         "implies": [
             "React"
         ],
+        "meta": {
+            "author": "^HeroUI$",
+            "creator": "^heroui-inc$",
+            "keywords": "(?:^|,)HeroUI(?:,|$)"
+        },
         "oss": true,
-        "website": "https://nextui.org/"
+        "website": "https://www.heroui.com"
     },
     "Heroku": {
         "cats": [
@@ -44042,6 +44174,29 @@
         "requires": "Microsoft ASP.NET",
         "website": "https://www.icisleri.gov.tr/internet-sayfalari-yonetimi-isay"
     },
+    "ISO100": {
+        "cats": [
+            7
+        ],
+        "description": "ISO100 is a platform for publishing image-led photography portfolios.",
+        "headers": {
+            "content-security-policy": "api\\.iso100\\.app"
+        },
+        "icon": "ISO100.svg",
+        "meta": {
+            "generator": "^ISO100 \\(https://iso100\\.app\\)$"
+        },
+        "pricing": [
+            "low",
+            "freemium",
+            "recurring"
+        ],
+        "saas": true,
+        "scripts": "api\\.iso100\\.app/v1/public/portfolios/[^/]+/(?:events|%65vents)",
+        "url": "\\.iso100\\.photos(?:/|$)",
+        "website": "https://iso100.app",
+        "xhr": "api\\.iso100\\.app"
+    },
     "Iamport": {
         "cats": [
             41
@@ -44955,6 +45110,7 @@
         ],
         "description": "Influx CMS is a medical marketing platform specializing in custom web design and marketing for doctors, surgeons, and medical spas.",
         "dom": "a[href*='www.influxmarketing.com'] > svg[class*='influx-footer-logo'",
+        "excludes": "Growthstack",
         "icon": "InfluxCMS.svg",
         "meta": {
             "generator": "^Influx CMS$"
@@ -47103,8 +47259,10 @@
             1,
             47
         ],
-        "dom": "script#staticAssetAggregatedJavascrip",
+        "description": "Jahia DX is a digital experience platform for building and managing websites, portals, and personalized content.",
+        "dom": "script#jahia-data-ctx, script#staticAssetAggregatedJavascrip, script#staticAssetAggregatedJavascript, script[src*='/javascript/initJahiaContext.js']",
         "icon": "JahiaDX.svg",
+        "scriptSrc": "/javascript/initJahiaContext\\.js",
         "website": "https://www.jahia.com/dx"
     },
     "Jalios": {
@@ -47164,6 +47322,17 @@
         "saas": true,
         "scriptSrc": "schedule\\.jarvisanalytics\\.com",
         "website": "https://www.jarvisanalytics.com"
+    },
+    "Jaspr": {
+        "cats": [
+            18
+        ],
+        "description": "Jaspr is an open-source web framework for building websites and applications with Dart.",
+        "dom": "a.jaspr-badge-link[href='https://jaspr.site']",
+        "implies": "Dart",
+        "oss": true,
+        "scriptSrc": "/main\\.client\\.dart\\.js",
+        "website": "https://jaspr.site"
     },
     "Java": {
         "cats": [
@@ -47497,6 +47666,25 @@
         "saas": true,
         "url": "\\.jimdo(?:site)?\\.com/",
         "website": "https://www.jimdo.com"
+    },
+    "Jimo": {
+        "cats": [
+            58
+        ],
+        "description": "Jimo is a digital adoption platform for building in-app onboarding, product tours, and user engagement flows.",
+        "dom": "script[src*='undercity.usejimo.com/jimo-invader.js']",
+        "icon": "Jimo.svg",
+        "js": {
+            "JIMO_PROJECT_ID": "",
+            "jimo": "\\;confidence:50"
+        },
+        "pricing": [
+            "mid",
+            "recurring"
+        ],
+        "saas": true,
+        "scriptSrc": "undercity\\.usejimo\\.com/jimo-invader\\.js",
+        "website": "https://jimo.ai"
     },
     "Jirafe": {
         "cats": [
@@ -48445,6 +48633,18 @@
         ],
         "saas": true,
         "website": "https://www.kmk.net.tr"
+    },
+    "KOMERO": {
+        "cats": [
+            6
+        ],
+        "description": "KOMERO is an ecommerce platform and website builder for creating online stores.",
+        "icon": "KOMERO.png",
+        "meta": {
+            "generator": "^KOMERO$"
+        },
+        "saas": true,
+        "website": "https://www.komero.ge"
     },
     "KPA": {
         "cats": [
@@ -51264,6 +51464,19 @@
         ],
         "saas": true,
         "website": "https://launchlms.com.br"
+    },
+    "LaunchMyStore": {
+        "cats": [
+            6
+        ],
+        "description": "LaunchMyStore is an ecommerce platform for creating and managing online stores, including themes, payments, inventory, and storefront tools.",
+        "headers": {
+            "link": "(?:assets|cdn)\\.launchmystore\\.io"
+        },
+        "icon": "LaunchMyStore.png",
+        "saas": true,
+        "scriptSrc": "assets\\.launchmystore\\.io/themes/[\\w-]+/assets/",
+        "website": "https://launchmystore.io"
     },
     "LaunchNotes": {
         "cats": [
@@ -55165,7 +55378,6 @@
         ],
         "cookies": {
             "X-Magento-Vary": "",
-            "frontend": "\\;confidence:50",
             "mage-cache-storage": "",
             "mage-cache-storage-section-invalidation": "",
             "mage-translation-file-version": "",
@@ -56537,6 +56749,21 @@
         },
         "website": "https://masterking32.com"
     },
+    "Masthead CMS": {
+        "cats": [
+            1
+        ],
+        "description": "Masthead CMS is a content management system for local news publishers and editorial teams.",
+        "meta": {
+            "generator": "^Masthead CMS$"
+        },
+        "pricing": [
+            "poa",
+            "recurring"
+        ],
+        "saas": true,
+        "website": "https://mastheadcms.com"
+    },
     "Mastodon": {
         "cats": [
             2
@@ -57116,6 +57343,7 @@
             6
         ],
         "cookies": {
+            "_medusa_cache_id": "^[\\da-f-]{36}$",
             "medusa.sid": ""
         },
         "description": "Medusa is an open-source ecommerce platform that enables users to create online stores.",
@@ -57221,6 +57449,27 @@
         "scriptSrc": "static\\.meiqia\\.com",
         "scripts": "static\\.meiqia\\.com",
         "website": "https://www.meiqia.com"
+    },
+    "Meku": {
+        "cats": [
+            51
+        ],
+        "description": "Meku is an AI website and web app builder for creating and deploying full-stack sites.",
+        "icon": "Meku.svg",
+        "meta": {
+            "generator": "^Meku$"
+        },
+        "pricing": [
+            "low",
+            "freemium",
+            "recurring"
+        ],
+        "saas": true,
+        "scriptSrc": [
+            "assets\\.meku\\.app/public/(?:meku-analytics-v1|badge-v2)\\.js",
+            "cdn\\.meku\\.dev/meku/templates/"
+        ],
+        "website": "https://meku.dev"
     },
     "Melibo": {
         "cats": [
@@ -61844,6 +62093,25 @@
         "scriptSrc": "themes/neve\\S*\\.js(?:\\?ver=([0-9.]+))?\\;version:\\1",
         "website": "https://themeisle.com/themes/neve/"
     },
+    "Nevuto": {
+        "cats": [
+            6
+        ],
+        "description": "Nevuto is a hosted ecommerce platform for building online stores with themes, checkout, payments, shipping, and sales-channel tools.",
+        "icon": "Nevuto.svg",
+        "meta": {
+            "generator": "^Nevuto$"
+        },
+        "pricing": [
+            "freemium",
+            "low",
+            "recurring"
+        ],
+        "saas": true,
+        "scriptSrc": "cdn\\.nevu\\.to/s/files/.+/scripts/(?:main|vendor)\\.js",
+        "url": "^https?://[^/]+\\.nevu\\.to(?:[/?#]|$)",
+        "website": "https://nevuto.com"
+    },
     "New Relic": {
         "cats": [
             78
@@ -62995,6 +63263,24 @@
         "scripts": "NOWFLOATS_POSITION",
         "website": "https://www.nowfloats.com"
     },
+    "Nsin": {
+        "cats": [
+            31
+        ],
+        "description": "Nsin is a connectivity-focused CDN for keeping websites reachable across regions and networks.",
+        "headers": {
+            "Server": "^NSIN$",
+            "X-Nsin-Cache": "",
+            "X-Nsin-Edge": ""
+        },
+        "icon": "Nsin.png",
+        "pricing": [
+            "poa",
+            "recurring"
+        ],
+        "saas": true,
+        "website": "https://nsin.ir/"
+    },
     "Nucleus CMS": {
         "cats": [
             1
@@ -63299,6 +63585,17 @@
             "oxTopMenu": ""
         },
         "website": "https://www.oxid-esales.com"
+    },
+    "Oat UI": {
+        "cats": [
+            66
+        ],
+        "description": "Oat UI is a lightweight, semantic HTML, CSS, and JavaScript UI component library.",
+        "dom": "ot-accordion, ot-dropdown, ot-tabs, ot-toast",
+        "icon": "Oat UI.svg",
+        "oss": true,
+        "scriptSrc": "(?:^|/)oat(?:\\.min)?\\.js(?:\\?|$)\\;confidence:50",
+        "website": "https://oat.ink"
     },
     "Oat++": {
         "cats": [
@@ -66487,6 +66784,7 @@
         "dom": "form[action*='login_process.php'], form[action*='assets/mail.php']",
         "headers": {
             "Server": "php/?([\\d.]+)?\\;version:\\1",
+            "Set-Cookie": "PHPSESSID=",
             "X-Powered-By": "^PHP/?([\\d.]+)\\;version:\\1"
         },
         "icon": "PHP.svg",
@@ -72939,6 +73237,7 @@
                 "protonmail-verification="
             ]
         },
+        "dom": "link[rel='canonical'][href='https://mail.proton.me/'], meta[name='application-name'][content='Proton Mail'], meta[name='apple-mobile-web-app-title'][content='Proton Mail']",
         "icon": "Proton Mail.svg",
         "saas": true,
         "website": "https://proton.me/mail"
@@ -75593,6 +75892,21 @@
         "implies": "Ruby",
         "website": "https://github.com/rtomayko/rack-cache"
     },
+    "Rackspace": {
+        "cats": [
+            88
+        ],
+        "description": "Rackspace is a cloud computing and managed hosting provider.",
+        "dns": {
+            "NS": "\\.rackspace\\.com"
+        },
+        "icon": "Rackspace.png",
+        "pricing": [
+            "recurring",
+            "poa"
+        ],
+        "website": "https://www.rackspace.com"
+    },
     "Ractive.js": {
         "cats": [
             59
@@ -75721,7 +76035,8 @@
         ],
         "description": "Railway is a cloud platform that simplifies building, deploying, and managing applications with easy setup and scalable infrastructure.",
         "headers": {
-            "Server": "^railway$"
+            "Server": "^railway(?:-edge)?$",
+            "x-railway-edge": "^railway/"
         },
         "icon": "Railway.svg",
         "pricing": [
@@ -76430,7 +76745,11 @@
             "/([\\d\\.]+)/react(?:\\.min)?\\.js\\;version:\\1",
             "^react\\b.*\\.js"
         ],
-        "scripts": "react\\.js",
+        "scripts": [
+            "react\\.js",
+            "@license React\\s.{0,80}react(?:\\.production(?:\\.min)?|\\.development)?\\.js",
+            "https://react\\.dev/errors/.{0,250}Minified React error #"
+        ],
         "website": "https://reactjs.org"
     },
     "React Bricks": {
@@ -78000,6 +78319,24 @@
         "saas": true,
         "scriptSrc": "cdn\\.getreplybox\\.com",
         "website": "https://getreplybox.com"
+    },
+    "ReplySuite": {
+        "cats": [
+            52
+        ],
+        "description": "ReplySuite is an AI-powered customer engagement platform for automated website chat and response management.",
+        "icon": "ReplySuite.png",
+        "js": {
+            "ReplySuite": ""
+        },
+        "pricing": [
+            "low",
+            "freemium",
+            "recurring"
+        ],
+        "saas": true,
+        "scriptSrc": "replysuite\\.app/embed\\.js",
+        "website": "https://replysuite.app"
     },
     "Replyco": {
         "cats": [
@@ -80787,6 +81124,20 @@
         "scripts": "embed\\.sendtonews\\.com/",
         "website": "https://www.stnvideo.com"
     },
+    "STRIGHT": {
+        "cats": [
+            67
+        ],
+        "description": "STRIGHT is a consent management platform for cookie consent, privacy disclosures, and privacy regulation support.",
+        "icon": "STRIGHT.svg",
+        "pricing": [
+            "mid",
+            "recurring"
+        ],
+        "saas": true,
+        "scriptSrc": "cdn01\\.stright\\.bizris\\.com/js/(?:[\\d.]+/)?cookie_consent_(?:block|setting)\\.js",
+        "website": "https://www.iij.ad.jp/biz/stright/"
+    },
     "STUDIO": {
         "cats": [
             51
@@ -81345,6 +81696,21 @@
         "saas": true,
         "scriptSrc": "/demandware\\.static/",
         "website": "https://demandware.com"
+    },
+    "Salesforce Data 360": {
+        "cats": [
+            97
+        ],
+        "description": "Salesforce Data 360 is a customer data platform for unifying customer data and activating audience and analytics workflows.",
+        "icon": "Salesforce.svg",
+        "implies": "Salesforce",
+        "pricing": [
+            "poa",
+            "recurring"
+        ],
+        "saas": true,
+        "scriptSrc": "cdn\\.c360a\\.salesforce\\.com/beacon/c360a/[\\w-]+/scripts/c360a\\.min\\.js",
+        "website": "https://www.salesforce.com/data/"
     },
     "Salesforce Experience Cloud": {
         "cats": [
@@ -82697,6 +83063,24 @@
         "saas": true,
         "website": "https://sekolahku.web.id"
     },
+    "Seldit": {
+        "cats": [
+            1
+        ],
+        "description": "Seldit is a CMS platform for building and managing websites and ecommerce stores.",
+        "js": {
+            "Seldit.cms": "^true$"
+        },
+        "meta": {
+            "generator": "^Seldit$"
+        },
+        "pricing": [
+            "low",
+            "recurring"
+        ],
+        "saas": true,
+        "website": "https://seldit.com/"
+    },
     "Select2": {
         "cats": [
             59
@@ -82802,6 +83186,21 @@
         ],
         "saas": true,
         "website": "https://www.sellacious.com"
+    },
+    "Sellauth": {
+        "cats": [
+            6
+        ],
+        "description": "Sellauth is an ecommerce platform for creating storefronts and selling digital products, subscriptions, and services.",
+        "pricing": [
+            "low",
+            "recurring"
+        ],
+        "saas": true,
+        "scriptSrc": "a\\.sellauth\\.com/script\\.js",
+        "url": "\\.mysellauth\\.com",
+        "website": "https://www.sellauth.com",
+        "xhr": "api-internal-\\d+\\.sellauth\\.com"
     },
     "Sellbrite": {
         "cats": [
@@ -83264,6 +83663,24 @@
         "saas": true,
         "scriptSrc": "\\.sensaimetrics\\.io/",
         "website": "https://sensaimetrics.io"
+    },
+    "Sensei LMS": {
+        "cats": [
+            21,
+            87
+        ],
+        "description": "Sensei LMS is a WordPress plugin for creating and selling online courses, lessons, quizzes, and learning content.",
+        "dom": ".wp-block-sensei-lms-ui, .sensei-lms-course-navigation, .sensei-course-theme, link[href*='/wp-content/plugins/sensei-lms/'], link[href*='/wp-content/plugins/woothemes-sensei/plugins/sensei-lms/'], script[src*='/wp-content/plugins/sensei-lms/'], script[src*='/wp-content/plugins/woothemes-sensei/plugins/sensei-lms/']",
+        "icon": "Sensei LMS.png",
+        "oss": true,
+        "pricing": [
+            "low",
+            "freemium",
+            "recurring"
+        ],
+        "requires": "WordPress",
+        "scriptSrc": "/wp-content/plugins/(?:woothemes-sensei/plugins/)?sensei-lms/",
+        "website": "https://senseilms.com/"
     },
     "Sensor Tower": {
         "cats": [
@@ -87167,6 +87584,28 @@
         "scriptSrc": "slate-technolutions-net\\.cdn\\.technolutions\\.net/",
         "website": "https://technolutions.com"
     },
+    "Sleak.chat": {
+        "cats": [
+            52
+        ],
+        "cookies": {
+            "sleakChatId_.*": "",
+            "sleakVisitorId_.*": ""
+        },
+        "description": "Sleak.chat is a live chat platform for adding automated support widgets to websites.",
+        "icon": "Sleak.chat.svg",
+        "js": {
+            "injectSleakWidget": "",
+            "sleakScriptInjected": ""
+        },
+        "pricing": [
+            "low",
+            "recurring"
+        ],
+        "saas": true,
+        "scriptSrc": "cdn\\.sleak\\.chat/fetchsleakbot\\.js",
+        "website": "https://sleak.chat"
+    },
     "Sleeknote": {
         "cats": [
             32
@@ -90577,7 +91016,7 @@
         "cpe": "cpe:2.3:a:statamic:statamic:*:*:*:*:*:laravel:*:*",
         "description": "Statamic is an open-source and self-hosted content management system based on the PHP programming language.",
         "headers": {
-            "x-powered-by": "^Statamic$"
+            "x-powered-by": "(?:^|\\r?\\n)Statamic$"
         },
         "icon": "Statamic.svg",
         "implies": [
@@ -91237,7 +91676,7 @@
             1
         ],
         "description": "Storyblok is a headless CMS with a visual editor for developers, marketers and content editors.",
-        "dom": "img[src*='//a.storyblok.com/'], img[srcset*='a.storyblok.com']",
+        "dom": "img[src*='.storyblok.com/f/'], img[srcset*='.storyblok.com/f/']",
         "headers": {
             "content-security-policy": "app\\.storyblok\\.com",
             "x-frame-options": "app\\.storyblok\\.com"
@@ -91252,6 +91691,7 @@
             "mid"
         ],
         "saas": true,
+        "scripts": "StoryblokBridge|api(?:-[a-z]+)?\\.storyblok\\.com",
         "website": "https://www.storyblok.com"
     },
     "Storybook": {
@@ -92003,7 +92443,10 @@
             47
         ],
         "description": "Supabase is an open-source platform that offers a Postgres database, Authentication, APIs, Edge Functions, Realtime subscriptions, Storage, and Vector embeddings for project development.",
-        "dom": "a[href*='supabase.com'] > img[src*='/supabase-logo-wordmark--dark.png']",
+        "dom": [
+            "a[href*='supabase.com'] > img[src*='/supabase-logo-wordmark--dark.png']",
+            "link[href*='vendor-supabase-']"
+        ],
         "icon": "Supabase.svg",
         "implies": "PostgreSQL",
         "js": {
@@ -92019,7 +92462,10 @@
             "recurring"
         ],
         "saas": true,
-        "scripts": "\\.supabase\\.co/",
+        "scripts": [
+            "\\.supabase\\.co/",
+            "X-Client-Info\":\"(?:supabase-js|storage-js)/"
+        ],
         "website": "https://supabase.com"
     },
     "Supademo": {
@@ -92263,6 +92709,31 @@
         "saas": true,
         "scriptSrc": "chat\\.supportbox\\.cz/",
         "website": "https://supportbox.cz"
+    },
+    "Supportly": {
+        "cats": [
+            52
+        ],
+        "description": "Supportly is an AI-powered live chat and customer support widget for websites.",
+        "icon": "Supportly.svg",
+        "js": {
+            "SupportlyAI.product": "^Supportly AI$",
+            "SupportlyAI.widget": "^live-chat$"
+        },
+        "meta": {
+            "generator": "^Supportly AI$",
+            "supportly-ai": "^enabled$",
+            "supportly-widget": "^live-chat$"
+        },
+        "pricing": [
+            "low",
+            "freemium",
+            "recurring",
+            "poa"
+        ],
+        "saas": true,
+        "scriptSrc": "supportly-chat-widget\\.js",
+        "website": "https://supportly.com.tr"
     },
     "Supsystic": {
         "cats": [
@@ -92993,7 +93464,7 @@
             "systeme_affiliate": ""
         },
         "description": "Systeme.io is a marketing platform that helps businesses create and launch sales funnels, affiliate programs, email marketing campaigns, online courses, blogs, and websites.",
-        "dom": "from[action*='//systeme.io/'], a[href*='//systeme.io/']",
+        "dom": "form[action*='//systeme.io/']",
         "icon": "Systeme.io.svg",
         "pricing": [
             "freemium",
@@ -93001,8 +93472,11 @@
             "recurring"
         ],
         "saas": true,
-        "scriptSrc": "//systeme\\.io/",
-        "scripts": "\\.systeme\\.io",
+        "scriptSrc": [
+            "d3fit27i5nzkqh\\.cloudfront\\.net/default/(?:runtime|page|vendors)\\.",
+            "//systeme\\.io/"
+        ],
+        "url": "^https?://(?:[^/]+\\.)?systeme\\.io/",
         "website": "https://systeme.io"
     },
     "Systems Accel": {
@@ -93460,6 +93934,23 @@
         "scriptSrc": "\\.titanpush\\.com",
         "website": "https://www.titanpush.com"
     },
+    "TMW Shield": {
+        "cats": [
+            16
+        ],
+        "description": "TMW Shield is a DDoS mitigation and proxy service for protected network, hosting, and application traffic.",
+        "headers": {
+            "server": "^TMW Shield$",
+            "x-tmw-cache": ""
+        },
+        "icon": "TMW-Shield.svg",
+        "pricing": [
+            "mid",
+            "recurring"
+        ],
+        "saas": true,
+        "website": "https://www.tmw.global"
+    },
     "TN Express Web": {
         "cats": [
             1
@@ -93694,6 +94185,16 @@
         "saas": true,
         "scriptSrc": "app\\.tableo\\.com",
         "website": "https://tableo.com"
+    },
+    "Tabler Icons": {
+        "cats": [
+            17
+        ],
+        "description": "Tabler Icons is an open-source icon library with SVG, icon font, and framework packages for web interfaces.",
+        "dom": "link[href*='tabler-icons'], svg.icon-tabler, svg.tabler-icon, i.ti[class*='ti-']",
+        "icon": "Tabler Icons.svg",
+        "oss": true,
+        "website": "https://tabler.io/icons"
     },
     "Taboola": {
         "cats": [
@@ -93968,11 +94469,13 @@
         "cats": [
             66
         ],
-        "css": "--tw-(?:rotate|translate|space-x|text-opacity|border-opacity|bg-opacity|scale|ring|blur|shadow|brightness|contrast|grayscale|invert|sepia)",
+        "css": "--tw-(?:rotate|translate|skew|space-[xy]|divide-[xy]|text-opacity|border(?:-opacity|-style)|bg-opacity|scale|ring|blur|shadow|drop-shadow|backdrop|brightness|contrast|grayscale|hue-rotate|invert|opacity|saturate|sepia|font-weight|tracking|leading|duration|ease|content|gradient)",
         "description": "Tailwind CSS is a utility-first CSS framework for building custom user interfaces.",
         "dom": {
             "body [class]": {
-                "class": "\\b(?:flex|grid|text-(?:xs|sm|base|lg|xl)|bg-[a-z]+-[0-9]{3}|px-\\d+|py-\\d+|rounded(?:-[a-z]+)?|shadow(?:-[a-z]+)?|[a-z-]+-\\[[^\\]]+\\])\\b\\;confidence:50"
+                "attributes": {
+                    "class": "\\b(?:flex|grid|text-(?:xs|sm|base|lg|xl)|bg-[a-z]+-[0-9]{3}|px-\\d+|py-\\d+|rounded(?:-[a-z]+)?|shadow(?:-[a-z]+)?|[a-z-]+-\\[[^\\]]+\\])\\b\\;confidence:50"
+                }
             },
             "link[rel='stylesheet'][href*='.css']": {
                 "attributes": {
@@ -97870,6 +98373,23 @@
         "scriptSrc": "cdn\\.treasuredata\\.com/",
         "website": "https://www.treasuredata.com"
     },
+    "Treatwell": {
+        "cats": [
+            72
+        ],
+        "description": "Treatwell is an online marketplace and booking platform for hair, beauty, and wellness appointments.",
+        "icon": "Treatwell.png",
+        "meta": {
+            "og:site_name": "^Treatwell$"
+        },
+        "pricing": [
+            "recurring"
+        ],
+        "saas": true,
+        "scripts": "isTreatwellBrandedWidget",
+        "url": "^https?://(?:www\\.)?treatwell\\.(?:at|be|ch|co\\.uk|com|de|es|fr|gr|ie|it|lt|nl|pt)(?:[/?#]|$)",
+        "website": "https://www.treatwell.com"
+    },
     "Tremor": {
         "cats": [
             59
@@ -98973,6 +99493,29 @@
         "scripts": "spenden\\.twingle\\.de",
         "website": "https://www.twingle.de"
     },
+    "Twipla": {
+        "cats": [
+            10
+        ],
+        "description": "Twipla is a website intelligence platform with traffic analytics, heatmaps, session recordings, funnels, and visitor surveys.",
+        "dom": {
+            "script#wix-viewer-model": {
+                "text": "Twipla Session Recordings|dad178e5-571d-45bf-89a0-c1f97242199f"
+            }
+        },
+        "icon": "Twipla.svg",
+        "js": {
+            "_visaSettings": ""
+        },
+        "pricing": [
+            "low",
+            "freemium",
+            "recurring"
+        ],
+        "saas": true,
+        "scriptSrc": "(?:www\\.)?twipla\\.com/analytics/main\\.js",
+        "website": "https://www.twipla.com"
+    },
     "TwistedWeb": {
         "cats": [
             22
@@ -99623,6 +100166,20 @@
         "scriptSrc": "api\\.uxsniff\\.com",
         "website": "https://uxsniff.com"
     },
+    "Uappi": {
+        "cats": [
+            6
+        ],
+        "description": "Uappi is an ecommerce platform for B2C, B2B, and marketplace operations.",
+        "dom": "a[href*='uappi.com.br/'][href*='utm_content=footersite']",
+        "icon": "Uappi.svg",
+        "pricing": [
+            "poa"
+        ],
+        "saas": true,
+        "scriptSrc": "/sdk/uappi/loader\\.js",
+        "website": "https://uappi.com.br/"
+    },
     "Ubercart": {
         "cats": [
             6
@@ -99860,7 +100417,10 @@
             "umami": ""
         },
         "oss": true,
-        "scriptSrc": "umami\\.js",
+        "scriptSrc": [
+            "(?:^|[./])umami\\.[^/]+/(?:script|u)\\.js",
+            "umami\\.js"
+        ],
         "website": "https://umami.is/"
     },
     "Umbraco": {
@@ -100122,6 +100682,18 @@
         ],
         "saas": true,
         "website": "https://www.uniform.dev"
+    },
+    "UnifyDesk": {
+        "cats": [
+            1
+        ],
+        "description": "UnifyDesk is a content management system for building and managing websites and mobile apps from a single dashboard.",
+        "icon": "UnifyDesk.svg",
+        "meta": {
+            "generator": "^UnifyDesk CMS$"
+        },
+        "saas": true,
+        "website": "https://bookmi.ca"
     },
     "Unilog": {
         "cats": [
@@ -101755,6 +102327,15 @@
         "scripts": "www\\.vectera\\.com",
         "website": "https://go.vectera.com"
     },
+    "Vee": {
+        "cats": [
+            68
+        ],
+        "description": "Vee is an accessibility plugin for adding assistive browsing controls to websites.",
+        "scriptSrc": "vee-crm\\.com/js/",
+        "scripts": "Vee main\\.js - JavaScript Core // Version: ([\\d.]+)\\;version:\\1",
+        "website": "https://vee-crm.com"
+    },
     "Velaro": {
         "cats": [
             52
@@ -103138,6 +103719,16 @@
         "scriptSrc": "\\.viskan\\.com/",
         "website": "https://www.viskan.com/fi-fi"
     },
+    "Vista HCM": {
+        "cats": [
+            101
+        ],
+        "description": "Vista HCM is a human capital management suite by PDS for HR, payroll, benefits, recruiting, onboarding, time tracking, self-service, analytics, and reporting.",
+        "dom": "link[href*='/Skin/VistaHCM/'], link[href*='/App_Themes/Vista/']",
+        "scripts": "application:'PDSVISTA'|dialogSkin:'VistaHCM'",
+        "url": "^https?://[^/]+\\.vistahrms\\.com/",
+        "website": "https://www.pdssoftware.com/vista-overview/"
+    },
     "Visual Composer": {
         "cats": [
             51
@@ -104423,7 +105014,10 @@
         ],
         "cpe": "cpe:2.3:a:wp-rocket:wp-rocket:*:*:*:*:*:wordpress:*:*",
         "description": "WP Rocket is a caching and performance optimization plugin to improve the loading speed of WordPress websites.",
-        "dom": "style#wpr-usedcss",
+        "dom": [
+            "link[data-rocket-prefetch]",
+            "style#wpr-usedcss"
+        ],
         "headers": {
             "X-Powered-By": "WP Rocket(?:/([\\d.]+))?\\;version:\\1",
             "X-Rocket-Nginx-Bypass": ""
@@ -104446,6 +105040,7 @@
         "requires": "WordPress",
         "saas": true,
         "scriptSrc": "/wp-content/plugins/wp-rocket/",
+        "scripts": "RocketBrowserCompatibilityChecker|RocketPreloadLinksConfig|rocket_lazyload_css_data",
         "website": "https://wp-rocket.me"
     },
     "WP SEO AI": {
@@ -104463,6 +105058,21 @@
         "requires": "WordPress",
         "saas": true,
         "website": "https://wpseoai.com"
+    },
+    "WP Stratos": {
+        "cats": [
+            62,
+            88
+        ],
+        "description": "WP Stratos is a managed WordPress hosting platform.",
+        "headers": {
+            "platform": "^WP Stratos$",
+            "x-powered-by": "^WP Stratos Managed Cloud$"
+        },
+        "icon": "WP Stratos.svg",
+        "implies": "WordPress",
+        "saas": true,
+        "website": "https://wpstratos.com"
     },
     "WP-Optimize": {
         "cats": [
@@ -105349,7 +105959,7 @@
             66
         ],
         "description": "Web Awesome is an open-source library of customizable, standards-based, and framework-agnostic UI components designed to support interoperable web interfaces.",
-        "dom": "link[href*='/dist-cdn/styles/webawesome.css']",
+        "dom": "wa-button, wa-combobox, wa-icon, wa-input, link[href*='/dist-cdn/styles/webawesome.css']",
         "icon": "WebAwesome.svg",
         "pricing": [
             "low",
@@ -106187,6 +106797,30 @@
         ],
         "saas": true,
         "website": "https://www.websitebuilder.com"
+    },
+    "Webstorio": {
+        "cats": [
+            51
+        ],
+        "description": "Webstorio is an AI-powered website builder with built-in CMS, hosting, ecommerce, forms, and database tools.",
+        "dom": "script[data-webstorio-sdk-stub], script#webstorio-sdk",
+        "icon": "Webstorio.png",
+        "implies": [
+            "Next.js"
+        ],
+        "js": {
+            "__webstorioCallQueue__": "",
+            "__webstorioQueue__": "",
+            "webstorio": ""
+        },
+        "pricing": [
+            "low",
+            "freemium",
+            "recurring",
+            "poa"
+        ],
+        "saas": true,
+        "website": "https://webstorio.com"
     },
     "Webstudio": {
         "cats": [
@@ -110140,6 +110774,23 @@
         "saas": true,
         "scripts": "merchants\\.zammit\\.shop/",
         "website": "https://www.zammit.shop"
+    },
+    "Zapia": {
+        "cats": [
+            88
+        ],
+        "description": "Zapia provides managed website, domain, hosting, email, cloud, and VPN infrastructure services.",
+        "headers": {
+            "Server": "^zapia$"
+        },
+        "icon": "Zapia.svg",
+        "pricing": [
+            "low",
+            "onetime",
+            "recurring"
+        ],
+        "saas": true,
+        "website": "https://zapia.fr/"
     },
     "Zapiet": {
         "cats": [
