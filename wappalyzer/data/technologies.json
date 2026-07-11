@@ -5622,6 +5622,20 @@
         "scriptSrc": "script\\.anura\\.io/",
         "website": "https://www.anura.io"
     },
+    "Anviara EU Widerrufsbutton": {
+        "cats": [
+            100
+        ],
+        "description": "Anviara EU Widerrufsbutton is a Shopify app that adds a compliant EU withdrawal button and form to online stores.",
+        "dom": ".anv-withdrawal-form, .anv-withdrawal-button",
+        "requires": "Shopify",
+        "saas": true,
+        "scriptSrc": [
+            "customerorderediting\\.com/assets/altcha-[\\da-f]+\\.js",
+            "cdn\\.shopify\\.com/extensions/.+/self-serve-order-edit-.+/assets/withdrawal-link-locale\\.js"
+        ],
+        "website": "https://anviara.com"
+    },
     "AnyChat": {
         "cats": [
             52
@@ -23239,6 +23253,28 @@
         "saas": true,
         "website": "https://www.curaytor.com"
     },
+    "CusRev": {
+        "cats": [
+            90
+        ],
+        "description": "CusRev is a WooCommerce review platform and WordPress plugin for collecting, verifying, and displaying customer reviews.",
+        "dom": [
+            "link[href*='/wp-content/plugins/customer-reviews-woocommerce/']",
+            "a[href*='cusrev.com/'][href*='/reviews/']"
+        ],
+        "icon": "CusRev.png",
+        "implies": "WooCommerce",
+        "oss": true,
+        "pricing": [
+            "low",
+            "freemium",
+            "recurring"
+        ],
+        "requires": "WordPress",
+        "saas": true,
+        "scriptSrc": "/wp-content/plugins/customer-reviews-woocommerce/.+\\.js(?:\\?ver=(\\d+(?:\\.\\d+)+))?\\;version:\\1",
+        "website": "https://www.cusrev.com"
+    },
     "Custobar": {
         "cats": [
             97
@@ -25830,6 +25866,21 @@
         "saas": true,
         "scriptSrc": "\\.dimml\\.io/",
         "website": "https://www.dimml.io"
+    },
+    "Dioxus": {
+        "cats": [
+            66
+        ],
+        "description": "Dioxus is a Rust framework for building fullstack web, desktop, and mobile apps.",
+        "icon": "Dioxus.png",
+        "implies": "Rust",
+        "js": {
+            "dx_hydrate": "",
+            "initial_dioxus_hydration_data": ""
+        },
+        "oss": true,
+        "scripts": "window\\.(?:initial_dioxus_hydration_data|dx_hydrate)",
+        "website": "https://dioxuslabs.com"
     },
     "DirectAdmin": {
         "cats": [
@@ -34959,6 +35010,24 @@
         "scripts": "format\\.com",
         "website": "https://www.format.com"
     },
+    "Formbricks": {
+        "cats": [
+            73
+        ],
+        "description": "Formbricks is an open-source survey and experience management platform for collecting website, app, email, and link-based feedback.",
+        "js": {
+            "formbricks": ""
+        },
+        "oss": true,
+        "pricing": [
+            "low",
+            "freemium",
+            "recurring"
+        ],
+        "saas": true,
+        "scriptSrc": "/js/formbricks\\.umd\\.cjs",
+        "website": "https://formbricks.com"
+    },
     "Formcake": {
         "cats": [
             110
@@ -39719,6 +39788,10 @@
         },
         "saas": true,
         "scriptSrc": "\\.googletagmanager\\.com/(gtm\\.js)?",
+        "scripts": [
+            "googletagmanager\\.com/gtm\\.js\\?id=GTM-[A-Z0-9-]+",
+            "googletagmanager\\.com/gtm\\.js\\?id=['\"]?\\s*\\+\\s*i[\\s\\S]{0,250}GTM-[A-Z0-9-]+"
+        ],
         "website": "https://www.google.com/tagmanager"
     },
     "Google Tag Manager for WordPress": {
@@ -39792,6 +39865,22 @@
         },
         "icon": "Google.svg",
         "website": "https://workspace.google.com/"
+    },
+    "Google for WooCommerce": {
+        "cats": [
+            87
+        ],
+        "description": "Google for WooCommerce is a WordPress plugin for connecting WooCommerce stores with Google Merchant Center and Google Ads.",
+        "icon": "Google.svg",
+        "implies": "Google Ads",
+        "oss": true,
+        "requires": [
+            "WordPress",
+            "WooCommerce"
+        ],
+        "scriptSrc": "/wp-content/plugins/google-listings-and-ads/js/build/gtag-events\\.js(?:\\?ver=([\\d.]+))?\\;version:\\1",
+        "scripts": "developer_id\\.dOGY3NW",
+        "website": "https://wordpress.org/plugins/google-listings-and-ads/"
     },
     "Goope": {
         "cats": [
@@ -45264,6 +45353,29 @@
         "scriptSrc": "cdn\\.inksoft\\.com/",
         "website": "https://www.inksoft.com"
     },
+    "Inkybay": {
+        "cats": [
+            100,
+            76
+        ],
+        "description": "Inkybay is a Shopify product personalization app for configurable product options, live previews, and print-ready custom orders.",
+        "icon": "Inkybay.svg",
+        "implies": "Shopify",
+        "js": {
+            "EFOLI_INKYBAY_SCRIPTTAG_JS_INIT": "",
+            "runInkybayApp": ""
+        },
+        "pricing": [
+            "low",
+            "recurring"
+        ],
+        "saas": true,
+        "scriptSrc": [
+            "\\.inkybay\\.com/shopify/js/inkybay\\.js",
+            "/inkybay-product-personalizer-\\d+/assets/app\\.js"
+        ],
+        "website": "https://inkybay.com"
+    },
     "Innervate": {
         "cats": [
             36
@@ -45880,6 +45992,9 @@
         ],
         "description": "Intershop is an ecommerce platform, tailored to the needs of complex business processes and major organizations.",
         "icon": "Intershop.svg",
+        "meta": {
+            "intershop": "^Powered by INTERSHOP(?: \\d+)?$"
+        },
         "pricing": [
             "onetime",
             "high"
@@ -50097,6 +50212,27 @@
         "saas": true,
         "website": "https://kleeja.net"
     },
+    "Kleep": {
+        "cats": [
+            76
+        ],
+        "description": "Kleep is an AI sizing and personalization platform for fashion ecommerce retailers.",
+        "icon": "Kleep.svg",
+        "js": {
+            "KleepSDK": "",
+            "openKleepA11y": ""
+        },
+        "pricing": [
+            "poa"
+        ],
+        "saas": true,
+        "scriptSrc": [
+            "cdn\\.shopify\\.com/extensions/[^/]+/kleep-[^/]+/assets/kleep-[^/]+\\.js",
+            "module\\.kleep\\.ai/api/widget"
+        ],
+        "website": "https://kleep.ai",
+        "xhr": "(?:drawer|fit|module|products)\\.kleep\\.ai"
+    },
     "Kleer": {
         "cats": [
             1
@@ -50302,6 +50438,25 @@
         },
         "oss": true,
         "website": "https://knockoutjs.com"
+    },
+    "Knoku": {
+        "cats": [
+            4
+        ],
+        "description": "Knoku is an AI answer platform that indexes documentation and support content for website widgets, API, and chat integrations.",
+        "icon": "Knoku.svg",
+        "js": {
+            "__KNOKU_CONFIG__": ""
+        },
+        "pricing": [
+            "freemium",
+            "low",
+            "recurring"
+        ],
+        "saas": true,
+        "scriptSrc": "cdn\\.knoku\\.com/widget\\.js",
+        "website": "https://knoku.com",
+        "xhr": "api\\.knoku\\.com/api/v1/config/"
     },
     "Knoma": {
         "cats": [
@@ -51189,6 +51344,18 @@
         "website": "https://wiki.lkqd.com",
         "xhr": "\\.lkqd\\.net"
     },
+    "LLK Analytics": {
+        "cats": [
+            10
+        ],
+        "description": "LLK Analytics is a privacy-friendly analytics platform for websites, apps, and digital publications with realtime traffic statistics and AI-generated reports.",
+        "dom": "script[src*='js.llk.hk'][data-site-id]",
+        "icon": "LLK Analytics.svg",
+        "saas": true,
+        "scriptSrc": "js\\.llk\\.hk",
+        "website": "https://llk.hk/",
+        "xhr": "api\\.llk\\.hk"
+    },
     "LPQV": {
         "cats": [
             6
@@ -51355,6 +51522,7 @@
             18
         ],
         "cookies": {
+            "laravel-session": "",
             "laravel_session": ""
         },
         "cpe": "cpe:2.3:a:laravel:laravel:*:*:*:*:*:*:*:*",
@@ -55978,6 +56146,9 @@
             "Content-Security-Policy": "app\\.makeswift\\.com"
         },
         "icon": "Makeswift.svg",
+        "meta": {
+            "makeswift-preview-info": "isPreview"
+        },
         "pricing": [
             "freemium",
             "mid",
@@ -55985,7 +56156,11 @@
             "poa"
         ],
         "saas": true,
-        "scripts": "app\\.makeswift\\.com",
+        "scripts": [
+            "app\\.makeswift\\.com",
+            "@@makeswift/type",
+            "Makeswift(?:Provider|Component)"
+        ],
         "website": "https://www.makeswift.com"
     },
     "Malomo": {
@@ -56711,7 +56886,7 @@
             41
         ],
         "description": "MasterCard facilitates electronic funds transfers throughout the world, most commonly through branded credit cards, debit cards and prepaid cards.",
-        "dom": "[aria-labelledby='pi-mastercard'], [aria-labelledby='pi-master']",
+        "dom": "[aria-labelledby='pi-mastercard'], [aria-labelledby='pi-master'], img[alt='master'][src*='/checkout-web/assets/'][src*='/assets/master.'][src$='.svg']",
         "icon": "Mastercard.svg",
         "website": "https://www.mastercard.com"
     },
@@ -57350,6 +57525,11 @@
         "dom": "div.content-container > a[href*='www.medusajs.com'], a[href*='mailto:hello@medusajs.com']",
         "icon": "MedusaJs.svg",
         "oss": true,
+        "scripts": [
+            "Initiating Medusa client with default headers",
+            "x-publishable-api-key",
+            "medusajs\\.app[^\\n]+publishableKey"
+        ],
         "website": "https://medusajs.com"
     },
     "Meebo": {
@@ -58830,6 +59010,25 @@
         "saas": true,
         "scripts": "mirakl\\.track",
         "website": "https://www.mirakl.com"
+    },
+    "Mirra": {
+        "cats": [
+            6
+        ],
+        "description": "Mirra is a try-before-you-buy and post-purchase ecommerce platform for fashion, apparel, and beauty brands.",
+        "dom": "#try-with-mirra-product-container, .try-with-mirra-extension, a[href*='trywithmirra.com/terms-and-conditions']",
+        "icon": "Mirra.svg",
+        "js": {
+            "TryWithMirra": ""
+        },
+        "pricing": [
+            "recurring",
+            "poa"
+        ],
+        "requires": "Shopify",
+        "saas": true,
+        "scriptSrc": "cdn\\.shopify\\.com/extensions/[^/]+/mirra-[^/]+/assets/mirra-product-page\\.js",
+        "website": "https://trywithmirra.com"
     },
     "Mirus": {
         "cats": [
@@ -68070,7 +68269,7 @@
             41
         ],
         "description": "PayFast is a payments processing service for South Africans & South African websites.",
-        "dom": "[aria-labelledby='pi-payfast_instant_eft']",
+        "dom": "[aria-labelledby='pi-payfast_instant_eft'], img[alt='payfast instant eft'][src*='/checkout-web/assets/'][src*='/assets/payfast_instant_eft.'][src$='.svg']",
         "icon": "Payfast.svg",
         "website": "https://www.payfast.co.za/"
     },
@@ -70602,14 +70801,19 @@
         ],
         "cpe": "cpe:2.3:a:plone:plone:*:*:*:*:*:*:*:*",
         "description": "Plone is a free and open source content management system (CMS) built on top of the Zope application server.",
-        "dom": "link[href^='/++resource++']",
+        "dom": "link[href^='/++resource++'], link[href*='resourceplone.']",
         "icon": "Plone.svg",
         "implies": "Python",
+        "js": {
+            "ploneDnDReorder": "",
+            "ploneFormTabbing": "",
+            "registerPloneFunction": ""
+        },
         "meta": {
-            "generator": "Plone"
+            "generator": "^Plone(?:\\b|\\s+-)"
         },
         "oss": true,
-        "scriptSrc": "^/\\+\\+resource\\+\\+",
+        "scriptSrc": "(?:^/\\+\\+resource\\+\\+|/portal_javascripts/[^?#]*resourceplone\\.)",
         "website": "https://plone.org/"
     },
     "Plotly": {
@@ -73381,16 +73585,24 @@
             60
         ],
         "description": "Proxmox VE is an open-source virtualisation and containerisation platform that provides a web-based management interface to manage virtual machines, containers, storage, and networking.",
+        "dom": "img[src*='pwt/images/proxmox_logo.svg'][alt='Proxmox']",
         "headers": {
             "Server": "pve-api-daemon/[\\d\\.]+"
         },
         "icon": "Proxmox.svg",
+        "js": {
+            "Proxmox.Setup.auth_cookie_name": "^PVEAuthCookie$"
+        },
         "oss": true,
         "pricing": [
             "low",
             "recurring"
         ],
         "saas": true,
+        "scriptSrc": [
+            "/pve2/js/pvemanagerlib\\.js\\?ver=([\\d.]+)\\;version:\\1",
+            "/proxmoxlib\\.js"
+        ],
         "website": "https://proxmox.com/en/proxmox-ve"
     },
     "Psyma": {
@@ -78238,6 +78450,29 @@
         "scriptSrc": "\\.rentcafe\\.com/",
         "website": "https://www.rentcafe.com"
     },
+    "Rentware": {
+        "cats": [
+            93
+        ],
+        "description": "Rentware is rental management software with booking widgets for inventory, reservation, and online payment workflows.",
+        "dom": "rtr-widget-config, rentware-checkout, rtr-search, rentware-search",
+        "icon": "Rentware.svg",
+        "js": {
+            "RENTWARE_BASE_API_URL": "",
+            "RENTWARE_LANGUAGE": ""
+        },
+        "pricing": [
+            "low",
+            "recurring"
+        ],
+        "saas": true,
+        "scriptSrc": [
+            "w-cdn\\.rentware\\.io/dist/rentware-widgets\\.esm\\.js",
+            "cdn\\.rtr-io\\.com/widgets(?:_sol_v2)?\\.js"
+        ],
+        "website": "https://rentware.com",
+        "xhr": "widget\\.rtr-io\\.com/booking/system"
+    },
     "Rep.co": {
         "cats": [
             90
@@ -80728,6 +80963,7 @@
         ],
         "cpe": "cpe:2.3:a:sap:netweaver_application_server:*:*:*:*:*:*:*:*",
         "headers": {
+            "Sap-Server": "^true$",
             "Server": "SAP NetWeaver Application Server"
         },
         "icon": "SAP.svg",
@@ -88168,6 +88404,7 @@
             100
         ],
         "description": "Smile App offers a loyalty program for Shopify stores.",
+        "dom": "script[src*='/assets/smile-loader.js']",
         "icon": "Smile.svg",
         "implies": "Smile",
         "pricing": [
@@ -88177,7 +88414,10 @@
         ],
         "requires": "Shopify",
         "saas": true,
-        "scriptSrc": "js\\.smile\\.io/.+smile-shopify\\.js",
+        "scriptSrc": [
+            "js\\.smile\\.io/.+smile-shopify\\.js",
+            "cdn\\.shopify\\.com/extensions/.+/assets/smile-loader\\.js"
+        ],
         "website": "https://apps.shopify.com/smile-io"
     },
     "Smile Virtual": {
@@ -93044,6 +93284,36 @@
         ],
         "website": "https://sweetalert2.github.io/"
     },
+    "SweetCode Pixel Manager for WooCommerce": {
+        "cats": [
+            87
+        ],
+        "description": "SweetCode Pixel Manager for WooCommerce is a WordPress plugin for tracking ecommerce conversions across Google Ads, GA4, Meta, TikTok, Pinterest, and Microsoft Ads.",
+        "icon": "SweetCode Pixel Manager for WooCommerce.png",
+        "implies": "WooCommerce",
+        "js": {
+            "pmwDataLayer.version.number": "^(.+)$\\;version:\\1",
+            "wpmDataLayer.version.number": "^(.+)$\\;version:\\1"
+        },
+        "meta": {
+            "pm-datalayer-meta": ""
+        },
+        "pricing": [
+            "freemium",
+            "low",
+            "recurring"
+        ],
+        "scriptSrc": [
+            "/wp-content/plugins/woocommerce-google-adwords-conversion-tracking-tag/js/public/(?:free/)?pmw-public\\.p1\\.min\\.js(?:\\?ver=([\\d.]+))?\\;version:\\1",
+            "/wp-content/plugins/woocommerce-google-adwords-conversion-tracking-tag/js/public/(?:free/)?[a-z-]+\\.[a-f0-9]+\\.chunk\\.min\\.js",
+            "/wp-content/plugins/woocommerce-google-adwords-conversion-tracking-tag/js/public/wooptpm\\.js(?:\\?ver=([\\d.]+))?\\;version:\\1"
+        ],
+        "scripts": [
+            "window\\.pmwDataLayer[\\s\\S]*woocommerce-google-adwords-conversion-tracking-tag",
+            "window\\.wpmDataLayer[\\s\\S]*woocommerce-google-adwords-conversion-tracking-tag"
+        ],
+        "website": "https://sweetcode.com/plugins/pmw/"
+    },
     "SweetHelp": {
         "cats": [
             98
@@ -94474,7 +94744,7 @@
         "dom": {
             "body [class]": {
                 "attributes": {
-                    "class": "\\b(?:flex|grid|text-(?:xs|sm|base|lg|xl)|bg-[a-z]+-[0-9]{3}|px-\\d+|py-\\d+|rounded(?:-[a-z]+)?|shadow(?:-[a-z]+)?|[a-z-]+-\\[[^\\]]+\\])\\b\\;confidence:50"
+                    "class": "(?:^|\\s)(?:(?:sm|md|lg|xl|2xl|hover|focus|active|visited|disabled|enabled|first|last|odd|even|required|valid|invalid|checked|empty|target|open|default|indeterminate|placeholder-shown|autofill|read-only|before|after|first-letter|first-line|marker|selection|file|backdrop|placeholder|dark|motion-safe|motion-reduce|portrait|landscape|print|contrast-more|contrast-less|focus-within|focus-visible|group-hover|group-focus|peer-hover|peer-focus):)*(?:text-(?:xs|sm|base|lg|xl)|(?:bg|from|via|to|text|border|ring)-[a-z]+-[0-9]{3}|rounded-(?:md|xl|2xl|3xl|full)|shadow-(?:md|xl|2xl|inner)|[a-z-]+-\\[[^\\]]+\\])(?:\\s|$)\\;confidence:50"
                 }
             },
             "link[rel='stylesheet'][href*='.css']": {
@@ -101339,6 +101609,25 @@
         "saas": true,
         "website": "https://uscreen.tv/"
     },
+    "UseClick": {
+        "cats": [
+            10
+        ],
+        "description": "UseClick is a privacy-focused analytics and link management platform for tracking website traffic, short links, and bio pages.",
+        "icon": "UseClick.svg",
+        "js": {
+            "useclick.version": "(.+)\\;version:\\1"
+        },
+        "pricing": [
+            "low",
+            "recurring",
+            "freemium"
+        ],
+        "saas": true,
+        "scriptSrc": "useclick\\.io/analytics\\.js",
+        "website": "https://useclick.io",
+        "xhr": "useclick\\.io/api/analytics/collect"
+    },
     "UseResponse": {
         "cats": [
             52
@@ -103589,7 +103878,7 @@
         "cats": [
             41
         ],
-        "dom": "[aria-labelledby='pi-visa']",
+        "dom": "[aria-labelledby='pi-visa'], img[alt='visa'][src*='/checkout-web/assets/'][src*='/assets/visa.'][src$='.svg']",
         "icon": "Visa.svg",
         "js": {
             "visaApi": "",
@@ -109774,6 +110063,7 @@
         "description": "Yandex. Metrica is a free web analytics service that tracks and reports website traffic.",
         "icon": "Yandex.Metrika.svg",
         "js": {
+            "mainMetrikaId": "",
             "yandex_metrika": ""
         },
         "scriptSrc": [
@@ -110875,6 +111165,28 @@
         ],
         "saas": true,
         "website": "https://www.zeemaps.com"
+    },
+    "Zeeg": {
+        "cats": [
+            72
+        ],
+        "description": "Zeeg is an appointment scheduling platform with online booking pages, calendar integrations, reminders, and CRM automation.",
+        "headers": {
+            "x-powered-by": "\\bZeeg\\b"
+        },
+        "icon": "Zeeg.svg",
+        "meta": {
+            "og:image": "^https://og\\.zeeg\\.me/",
+            "og:site_name": "^Zeeg$",
+            "twitter:site": "^@zeeg_me$"
+        },
+        "pricing": [
+            "low",
+            "recurring",
+            "freemium"
+        ],
+        "saas": true,
+        "website": "https://zeeg.me"
     },
     "Zeleris": {
         "cats": [
@@ -112112,6 +112424,32 @@
         "saas": true,
         "scriptSrc": "/zwayam\\.min\\.js",
         "website": "https://www.zwayam.com"
+    },
+    "Zyncro": {
+        "cats": [
+            72
+        ],
+        "description": "Zyncro is an online booking platform for scheduling paid appointments, collecting payments, and sending reminders.",
+        "dom": {
+            "[data-zyncro-url]": {
+                "attributes": {
+                    "data-zyncro-url": "^(?:https?://)?zyncro\\.in/[^/?#]+/[^?#]+"
+                }
+            },
+            "a[href*='zyncro.in/']": {
+                "attributes": {
+                    "href": "^https?://zyncro\\.in/[^/?#]+/[^?#]+"
+                }
+            }
+        },
+        "icon": "Zyncro.png",
+        "pricing": [
+            "low",
+            "freemium"
+        ],
+        "saas": true,
+        "scriptSrc": "zyncro\\.in/embed\\.js",
+        "website": "https://zyncro.in"
     },
     "Zyratalk": {
         "cats": [

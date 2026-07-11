@@ -533,14 +533,12 @@ class DriverPool:
             await driver.close()
             raise
         finally:
-            if not reusable:
-                return
-
-            if self.closed:
-                await driver.close()
-            else:
-                await driver.reset()
-                await self.queue.put(driver)
+            if reusable:
+                if self.closed:
+                    await driver.close()
+                else:
+                    await driver.reset()
+                    await self.queue.put(driver)
 
     async def cleanup(self):
         if self.closed:
