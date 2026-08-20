@@ -10986,6 +10986,22 @@
         ],
         "website": "https://birdeye.com"
     },
+    "Bisup": {
+        "cats": [
+            88
+        ],
+        "description": "Bisup is a web hosting and cloud infrastructure provider offering shared hosting, reseller hosting, managed VPS, cloud servers, and dedicated servers.",
+        "headers": {
+            "X-Bisup-Hosting": "^Bisup$"
+        },
+        "icon": "Bisup.png",
+        "pricing": [
+            "low",
+            "recurring"
+        ],
+        "saas": true,
+        "website": "https://www.bisup.com"
+    },
     "BitPay": {
         "cats": [
             41
@@ -11182,6 +11198,23 @@
         "oss": true,
         "scriptSrc": "/js/blankshield/blankshield\\.min\\.js",
         "website": "https://danielstjules.github.io/blankshield"
+    },
+    "Blanxer": {
+        "cats": [
+            6
+        ],
+        "description": "Blanxer is an ecommerce and point-of-sale platform for creating and managing online stores.",
+        "meta": {
+            "keywords": "\\bblanxer\\b\\;confidence:50",
+            "og:image": "^https://cdn2\\.blanxer\\.com/\\;confidence:50"
+        },
+        "pricing": [
+            "low",
+            "recurring"
+        ],
+        "saas": true,
+        "website": "https://www.blanxer.com",
+        "xhr": "api\\.blanxer\\.com"
     },
     "Blazor": {
         "cats": [
@@ -14017,6 +14050,23 @@
         "scriptSrc": "/wp-content/plugins/buddypress/.+\\.js(?:\\?ver=(\\d+(?:\\.\\d+)+))?\\;version:\\1",
         "website": "https://buddypress.org"
     },
+    "BudgetGuard": {
+        "cats": [
+            16
+        ],
+        "description": "BudgetGuard is a SaaS platform that detects invalid advertising traffic, click fraud, and campaign anomalies to help protect advertising budgets.",
+        "icon": "BudgetGuard.svg",
+        "js": {
+            "BudgetGuardTracking": ""
+        },
+        "pricing": [
+            "low",
+            "recurring"
+        ],
+        "saas": true,
+        "website": "https://budgetguard.lu",
+        "xhr": "checker\\.budgetguard\\.lu/api/tracking/"
+    },
     "BugHerd": {
         "cats": [
             13
@@ -14526,6 +14576,26 @@
         "saas": true,
         "scriptSrc": "api\\.byscuit\\.com/",
         "website": "https://www.byscuit.com"
+    },
+    "b10cks": {
+        "cats": [
+            1
+        ],
+        "description": "b10cks is an open-source headless content management system with block-based content modeling, localization, versioning, and image processing.",
+        "dom": "[src*='api.b10cks.com/ilum/'], meta[content*='api.b10cks.com/ilum/']",
+        "headers": {
+            "content-security-policy": "(?:api|app)\\.b10cks\\.com"
+        },
+        "icon": "b10cks.svg",
+        "oss": true,
+        "pricing": [
+            "low",
+            "freemium",
+            "recurring"
+        ],
+        "saas": true,
+        "scripts": "b10cks:\\{accessToken:\"blx_[^\"]+\",apiUrl:\"https://api\\.b10cks\\.com/api\"",
+        "website": "https://www.b10cks.com"
     },
     "bSecure": {
         "cats": [
@@ -15789,6 +15859,19 @@
         "saas": true,
         "scripts": "\\.needle\\.com/",
         "website": "https://capacity.com"
+    },
+    "Capital Turbine": {
+        "cats": [
+            32
+        ],
+        "description": "Capital Turbine is a marketing automation platform for financial advisors and wealth management firms.",
+        "dom": "a[href^='https://capitalturbine.com']",
+        "pricing": [
+            "mid",
+            "recurring"
+        ],
+        "saas": true,
+        "website": "https://capitalturbine.com"
     },
     "Capsule CRM": {
         "cats": [
@@ -17570,11 +17653,15 @@
         "cats": [
             52
         ],
+        "cookies": {
+            "_chatwoot_session": ""
+        },
         "cpe": "cpe:2.3:a:chatwoot:chatwoot:*:*:*:*:*:*:*:*",
         "description": "Chatwoot is a customer support tool for instant messaging channels.",
         "icon": "Chatwoot.svg",
         "js": {
             "$chatwoot": "",
+            "chatwootConfig": "",
             "chatwootSDK": ""
         },
         "pricing": [
@@ -19860,6 +19947,7 @@
             19
         ],
         "description": "Cocos2d is a mature open source cross-platform game development framework.",
+        "dom": "#Cocos2dGameContainer",
         "icon": "Cocos2d.svg",
         "js": {
             "CocosEngine": "([\\d\\.]{2,})\\;version:\\1"
@@ -20604,6 +20692,23 @@
         "saas": true,
         "scriptSrc": "static\\.common-ground\\.io/",
         "website": "https://common-ground.io"
+    },
+    "Commrz": {
+        "cats": [
+            6
+        ],
+        "description": "Commrz is a hosted website builder for creating ecommerce and portfolio websites.",
+        "icon": "Commrz.png",
+        "implies": "OpenCart",
+        "meta": {
+            "generator": "^Commrz$"
+        },
+        "pricing": [
+            "low",
+            "recurring"
+        ],
+        "saas": true,
+        "website": "https://www.commrz.com"
     },
     "Comms": {
         "cats": [
@@ -24824,6 +24929,9 @@
             "X-Powered-By": "(?:Debian|dotdeb|(potato|woody|sarge|etch|lenny|squeeze|wheezy|jessie|stretch|buster|sid))\\;version:\\1"
         },
         "icon": "Debian.svg",
+        "meta": {
+            "generator": "^nginx [\\d.]+ on Debian(?: ([\\d.]+))?(?: \\([^)]+\\))?$\\;version:\\1"
+        },
         "website": "https://debian.org"
     },
     "Decap CMS": {
@@ -24930,6 +25038,24 @@
         "saas": true,
         "scriptSrc": "portal\\.deepmarkit\\.com",
         "website": "https://www.deepmarkit.com"
+    },
+    "Dehasoft E-Ticaret": {
+        "cats": [
+            6
+        ],
+        "cookies": {
+            "deha-session": ""
+        },
+        "description": "Dehasoft E-Ticaret is an ecommerce platform for managing products, orders, payments, shipping, and ERP integrations.",
+        "icon": "Dehasoft E-Ticaret.png",
+        "meta": {
+            "publisher": "^Dehasoft$"
+        },
+        "pricing": [
+            "poa"
+        ],
+        "saas": true,
+        "website": "https://www.dehasofteticaret.com"
     },
     "Deko": {
         "cats": [
@@ -28408,6 +28534,18 @@
         "scripts": "\\.ecal\\.com",
         "website": "https://ecal.com"
     },
+    "Ecer": {
+        "cats": [
+            6
+        ],
+        "description": "Ecer is a B2B ecommerce marketplace and website platform for manufacturers, suppliers, and exporters.",
+        "icon": "Ecer.png",
+        "js": {
+            "watchECERIM": ""
+        },
+        "saas": true,
+        "website": "https://www.ecer.com"
+    },
     "Ecom": {
         "cats": [
             6
@@ -29012,7 +29150,7 @@
             "elementor_pro_login": ""
         },
         "description": "Elementor is a website builder platform for professionals on WordPress.",
-        "dom": "link[href*='/wp-content/plugins/elementor/']",
+        "dom": "link[href*='/wp-content/plugins/elementor/'], link[id^='elementor-'][href*='/wp-content/uploads/elementor/']",
         "icon": "Elementor.svg",
         "js": {
             "ElementorProFrontendConfig": "",
@@ -31587,6 +31725,24 @@
         },
         "website": "https://esyndicat.com"
     },
+    "eTermin": {
+        "cats": [
+            72
+        ],
+        "description": "eTermin is an online appointment scheduling platform with calendar, customer management, payment, and workflow automation features.",
+        "icon": "eTermin.svg",
+        "js": {
+            "etermin_session_id": ""
+        },
+        "pricing": [
+            "low",
+            "recurring",
+            "poa"
+        ],
+        "saas": true,
+        "url": "^https?://(?:www\\.)?etermin\\.net/",
+        "website": "https://www.etermin.net"
+    },
     "eTrigue": {
         "cats": [
             32
@@ -32082,13 +32238,17 @@
         "saas": true,
         "website": "https://www.faire.com"
     },
-    "Falakcart": {
+    "FalakCart": {
         "cats": [
             6
         ],
-        "description": "Falakcart is an ecommerce platform for creating and managing online stores with integrated storefront and checkout tooling.",
+        "description": "FalakCart is an ecommerce platform for creating and managing online stores with integrated storefront and checkout tooling.",
+        "dom": "img[src*='falakcart.blr1.digitaloceanspaces.com'], img[srcset*='falakcart.blr1.digitaloceanspaces.com'], link[imagesrcset*='falakcart.blr1.digitaloceanspaces.com']",
         "headers": {
-            "set-cookie": "falakcart-session="
+            "set-cookie": "falakcart-session=",
+            "x-store-custom-domain": "^[a-z0-9.-]+$\\;confidence:34",
+            "x-store-status": "^active$\\;confidence:33",
+            "x-store-subdomain": "^[a-z0-9]{3,32}$\\;confidence:33"
         },
         "saas": true,
         "website": "https://falakcart.com"
@@ -32275,7 +32435,6 @@
         ],
         "description": "Fast Bundle gives you the ability to create product bundle offers with discounts.",
         "icon": "Fast Bundle.svg",
-        "implies": "Shopify",
         "js": {
             "FastBundleConf.bundleBox": "",
             "FastBundleConf.cartInfo.app_version": "v([\\d\\.]+)\\;version:\\1"
@@ -32285,6 +32444,7 @@
             "recurring",
             "low"
         ],
+        "requires": "Shopify",
         "saas": true,
         "scriptSrc": "api\\.fastbundle\\.co/",
         "website": "https://fastbundle.co"
@@ -32936,6 +33096,7 @@
         ],
         "description": "Filamentphp is a set of full-stack components designed to serve as a foundational starting point for developing applications.",
         "icon": "Filament.svg",
+        "implies": "Livewire",
         "js": {
             "FilamentNotification": "",
             "filamentData": "",
@@ -33189,7 +33350,8 @@
             "Fingerprint": "(\\d)?$\\;version:\\1",
             "Fingerprint2": "",
             "Fingerprint2.VERSION": "^(.+)$\\;version:\\1",
-            "FingerprintJS": ""
+            "FingerprintJS": "",
+            "__fpjs_pvid": ""
         },
         "oss": true,
         "pricing": [
@@ -33199,6 +33361,10 @@
         "scriptSrc": [
             "fingerprint(?:/fp)?(\\d)?(?:\\.min)?\\.js\\;version:\\1",
             "fingerprintjs(?:\\-pro|2)?(?:@|/)(\\d.*?)?/\\;version:\\1"
+        ],
+        "scripts": [
+            "FingerprintProvider.{0,100}apiKey",
+            "FingerprintProvider client cannot be used in SSR"
         ],
         "website": "https://fingerprintjs.com"
     },
@@ -33330,12 +33496,12 @@
         "description": "Firepush is an omnichannel marketing app that helps Shopify stores to drive sales with automated web push, email and SMS campaigns.",
         "dom": "link[href*='cdn.firepush.net']",
         "icon": "Firepush.svg",
-        "implies": "Shopify",
         "pricing": [
             "low",
             "freemium",
             "recurring"
         ],
+        "requires": "Shopify",
         "saas": true,
         "scriptSrc": [
             "cdn\\.firepush\\.\\w+",
@@ -33588,6 +33754,24 @@
         "saas": true,
         "scriptSrc": "widget\\.flamp\\.ru",
         "website": "https://flamp.ru"
+    },
+    "Flare": {
+        "cats": [
+            100
+        ],
+        "description": "Flare is a Shopify app for configuring delivery dates, shipping rates, and checkout rules by location, product, method, lead time, cutoff, and capacity.",
+        "dom": "link[href*='/extensions/'][href*='/flare-'][href*='/assets/flare_'], script[src*='/extensions/'][src*='/flare-'][src*='/assets/flare_']",
+        "icon": "Flare.png",
+        "js": {
+            "__flareCartCheckoutGuardReady": ""
+        },
+        "pricing": [
+            "low",
+            "recurring"
+        ],
+        "requires": "Shopify",
+        "saas": true,
+        "website": "https://www.getflare.co.uk"
     },
     "FlareLane": {
         "cats": [
@@ -33950,7 +34134,6 @@
         ],
         "description": "Flits is a customer account pages that get all your shopper data in one place.",
         "icon": "Flits.svg",
-        "implies": "Shopify",
         "js": {
             "flitsObjects.accountPage": ""
         },
@@ -33958,6 +34141,7 @@
             "low",
             "recurring"
         ],
+        "requires": "Shopify",
         "saas": true,
         "website": "https://getflits.com"
     },
@@ -39910,6 +40094,7 @@
             "mid"
         ],
         "saas": true,
+        "scriptSrc": "assets\\.gorgias\\.help/",
         "website": "https://www.gorgias.com/"
     },
     "Gorilla Dash": {
@@ -41217,6 +41402,9 @@
         ],
         "cpe": "cpe:2.3:a:halo:halo:*:*:*:*:*:*:*:*",
         "description": "Halo is an open-source website building tool that supports dynamic themes, real-time editing, and multilingual setups.",
+        "headers": {
+            "X-Halo-Cache-At": ""
+        },
         "icon": "Halo.svg",
         "implies": "Java",
         "meta": {
@@ -41705,18 +41893,7 @@
             66
         ],
         "description": "Headless UI is a unstyled component library for either React.js or Vue.js from the same people that created Tailwind CSS.",
-        "dom": {
-            "button": {
-                "attributes": {
-                    "id": "headlessui-"
-                }
-            },
-            "div": {
-                "attributes": {
-                    "id": "headlessui-"
-                }
-            }
-        },
+        "dom": "[data-headlessui-state]",
         "icon": "Headless UI.svg",
         "oss": true,
         "website": "https://headlessui.dev"
@@ -44267,7 +44444,7 @@
         "cats": [
             7
         ],
-        "description": "ISO100 is a platform for publishing image-led photography portfolios.",
+        "description": "ISO100 is a free photography portfolio website builder. Photographers can upload selected work, arrange it into galleries, choose a layout, and publish a clean, image-led portfolio with shareable gallery links and an optional custom domain.",
         "headers": {
             "content-security-policy": "api\\.iso100\\.app"
         },
@@ -49330,6 +49507,28 @@
         "scriptSrc": "\\.kauz\\.ai",
         "website": "https://kauz.ai"
     },
+    "KePixel": {
+        "cats": [
+            42
+        ],
+        "description": "KePixel is a no-code server-side tracking and Conversion API platform for ecommerce stores and agencies.",
+        "icon": "KePixel.png",
+        "js": {
+            "__kepixelSallaLoaderInstalled": "",
+            "kepixel": ""
+        },
+        "pricing": [
+            "freemium",
+            "low",
+            "recurring"
+        ],
+        "saas": true,
+        "scriptSrc": [
+            "kepixel-tag\\.web\\.app/kpx-salla-runtime\\.js",
+            "tag\\.kepixel\\.online/kpx-salla-collect\\.js"
+        ],
+        "website": "https://kepixel.online/"
+    },
     "KeaBuilder": {
         "cats": [
             32
@@ -49743,6 +49942,7 @@
             "payg"
         ],
         "saas": true,
+        "scriptSrc": "cdn\\.shopify\\.com/extensions/[\\da-f-]+/kickflip-\\d+/assets/customizer\\.js",
         "scripts": "gokickflip\\.com",
         "website": "https://gokickflip.com"
     },
@@ -49903,11 +50103,18 @@
         },
         "cpe": "cpe:2.3:a:getkirby:kirby:*:*:*:*:*:*:*:*",
         "description": "Kirby is a file-based content management system (CMS) that simplifies website and web application development by using text files for content management instead of a traditional database.",
+        "dom": {
+            "[content*='/media/pages/'], [href*='/media/pages/'], [src*='/media/pages/'], [srcset*='/media/pages/']": {
+                "attributes": {
+                    "content": "/media/pages/.+/[a-f\\d]{10}-\\d+/",
+                    "href": "/media/pages/.+/[a-f\\d]{10}-\\d+/",
+                    "src": "/media/pages/.+/[a-f\\d]{10}-\\d+/",
+                    "srcset": "/media/pages/.+/[a-f\\d]{10}-\\d+/"
+                }
+            }
+        },
         "icon": "Kirby.svg",
-        "implies": [
-            "PHP",
-            "Vue.js"
-        ],
+        "implies": "PHP",
         "pricing": [
             "onetime"
         ],
@@ -51252,6 +51459,23 @@
         "saas": true,
         "website": "https://www.k-ecommerce.com"
     },
+    "kDrive": {
+        "cats": [
+            95
+        ],
+        "description": "kDrive is a cloud storage and file-sharing service from Infomaniak.",
+        "meta": {
+            "og:site_name": "^kDrive$"
+        },
+        "pricing": [
+            "low",
+            "recurring",
+            "freemium"
+        ],
+        "saas": true,
+        "url": "^https?://kdrive\\.infomaniak\\.com/app/share/",
+        "website": "https://www.infomaniak.com/en/ksuite/kdrive"
+    },
     "keep. archeevo": {
         "cats": [
             95
@@ -51443,6 +51667,22 @@
         "icon": "lagoon.svg",
         "oss": true,
         "website": "https://lagoon.sh/"
+    },
+    "Laioutr": {
+        "cats": [
+            1
+        ],
+        "description": "Laioutr is a frontend management platform for building, managing, and delivering composable ecommerce storefronts.",
+        "headers": {
+            "X-Powered-By": "^Laioutr(?: \\(@laioutr-core/frontend-core@[\\d.]+\\))?$"
+        },
+        "icon": "Laioutr.png",
+        "pricing": [
+            "poa",
+            "recurring"
+        ],
+        "saas": true,
+        "website": "https://www.laioutr.com"
     },
     "Landbot": {
         "cats": [
@@ -51892,6 +52132,28 @@
         "saas": true,
         "scripts": "api\\.leadprosper\\.io",
         "website": "https://leadprosper.io"
+    },
+    "Lead Recorder": {
+        "cats": [
+            10
+        ],
+        "description": "Lead Recorder is an analytics platform that attributes website calls, form submissions, and bookings to their marketing sources.",
+        "dom": {
+            "script[src*='leadrecorder.com/api/script/']": {
+                "attributes": {
+                    "src": "leadrecorder\\.com/api/script/[a-f\\d]{32}"
+                }
+            }
+        },
+        "icon": "Lead Recorder.png",
+        "pricing": [
+            "low",
+            "freemium",
+            "recurring"
+        ],
+        "saas": true,
+        "scriptSrc": "www\\.leadrecorder\\.com/api/script/[a-f\\d]{32}",
+        "website": "https://www.leadrecorder.com"
     },
     "LeadBoxer": {
         "cats": [
@@ -53646,6 +53908,21 @@
         "scriptSrc": "cdn\\.livechatinc\\.com/.*tracking\\.js",
         "website": "https://www.livechat.com/"
     },
+    "LiveChatAI": {
+        "cats": [
+            52
+        ],
+        "description": "LiveChatAI is a customer support platform for building AI chatbots trained on company content and handing conversations to human agents.",
+        "icon": "LiveChatAI.png",
+        "pricing": [
+            "low",
+            "freemium",
+            "recurring"
+        ],
+        "saas": true,
+        "scriptSrc": "^https://app\\.livechatai\\.com/embed\\.js",
+        "website": "https://livechatai.com"
+    },
     "LiveEdit": {
         "cats": [
             51,
@@ -54402,23 +54679,6 @@
         "saas": true,
         "website": "https://www.loopreturns.com"
     },
-    "Loop Web": {
-        "cats": [
-            47
-        ],
-        "description": "Loop Web is a provider in web, internet, network, and design services.",
-        "dom": "link[href*='.loopweb.net']",
-        "icon": "Loop Web.svg",
-        "meta": {
-            "id": "LoopWeb",
-            "loopweb": ""
-        },
-        "pricing": [
-            "low",
-            "recurring"
-        ],
-        "website": "https://www.loopweb.net"
-    },
     "Loop54": {
         "cats": [
             29,
@@ -54438,6 +54698,35 @@
         ],
         "saas": true,
         "website": "https://www.loop54.com"
+    },
+    "LoopWeb": {
+        "cats": [
+            47
+        ],
+        "description": "LoopWeb develops custom software, web applications, CMS, LMS, APIs, cloud solutions, plugins, and digital platforms.",
+        "dom": "link[href*='.loopweb.net'], meta[id='LoopWeb'], meta[name='LoopWeb']",
+        "headers": {
+            "X-LoopWeb": "^true$",
+            "x-loopweb": "^true$"
+        },
+        "icon": "Loop Web.svg",
+        "js": {
+            "LoopWeb": "^true$"
+        },
+        "meta": {
+            "developer": "^LoopWeb$",
+            "generator": "^LoopWeb$",
+            "id": "LoopWeb",
+            "loopweb": ""
+        },
+        "pricing": [
+            "freemium",
+            "onetime",
+            "payg",
+            "poa",
+            "recurring"
+        ],
+        "website": "https://www.loopweb.net"
     },
     "LoopedIn": {
         "cats": [
@@ -54576,6 +54865,7 @@
             "lovable-preview-mode": ""
         },
         "description": "Lovable is an AI-based collaborative page builder for generating UI components, projects, and templates in real time.",
+        "dom": "aside#lovable-badge a[href^='https://lovable.dev/projects/'][href*='utm_source=lovable-badge']",
         "icon": "Lovable.svg",
         "js": {
             "LOV_SELECTOR_SCRIPT_VERSION": "^[\\d\\.]+$"
@@ -57707,6 +57997,22 @@
         "saas": true,
         "website": "https://www.meltwater.com"
     },
+    "MemberPress": {
+        "cats": [
+            87,
+            21
+        ],
+        "description": "MemberPress is a WordPress plugin for creating membership sites, selling subscriptions and courses, and restricting access to content.",
+        "dom": "link[href*='/wp-content/plugins/memberpress'], script[src*='/wp-content/plugins/memberpress'], [class^='mepr-'], [class*=' mepr-'], [id^='mepr-'], [id^='mepr_']",
+        "icon": "MemberPress.svg",
+        "implies": "WordPress",
+        "pricing": [
+            "low",
+            "recurring"
+        ],
+        "scriptSrc": "/wp-content/plugins/memberpress(?:[-/])",
+        "website": "https://memberpress.com"
+    },
     "MemberSpace": {
         "cats": [
             19,
@@ -58398,14 +58704,14 @@
         ],
         "description": "Microsoft's Clarity is an analytics tool which provides website usage statistics, session recording, and heatmaps.",
         "icon": "Microsoft Clarity.svg",
-        "js": {
-            "clarity": ""
-        },
         "pricing": [
             "freemium"
         ],
         "saas": true,
-        "scriptSrc": "www\\.clarity\\.ms/.+/([\\d.]+)/clarity\\.js\\;version:\\1",
+        "scriptSrc": [
+            "(?:www|scripts)\\.clarity\\.ms/(?:s/)?([\\d.]+)/clarity\\.js\\;version:\\1",
+            "www\\.clarity\\.ms/tag/"
+        ],
         "website": "https://clarity.microsoft.com"
     },
     "Microsoft Dynamics 365 Commerce": {
@@ -59462,8 +59768,10 @@
             51
         ],
         "description": "Modulify is a platform that enables the creation and deployment of scalable websites.",
-        "dom": "[mdlfy-content]",
         "icon": "Modulify.svg",
+        "meta": {
+            "generator": "^Modulify$"
+        },
         "saas": true,
         "website": "https://modulify.ai"
     },
@@ -61186,6 +61494,18 @@
         ],
         "website": "https://www.minical.io"
     },
+    "miniOrange SAML SSO": {
+        "cats": [
+            69
+        ],
+        "description": "miniOrange SAML SSO is a WordPress plugin that enables SAML 2.0 single sign-on through external identity providers.",
+        "dom": "link[href*='/wp-content/plugins/miniorange-saml-20-single-sign-on/']",
+        "icon": "miniOrange SAML SSO.png",
+        "oss": true,
+        "requires": "WordPress",
+        "scriptSrc": "/wp-content/plugins/miniorange-saml-20-single-sign-on/",
+        "website": "https://wordpress.org/plugins/miniorange-saml-20-single-sign-on/"
+    },
     "mini_httpd": {
         "cats": [
             22
@@ -62679,9 +62999,13 @@
         "description": "Nginx is a web server that also works as a reverse proxy, load balancer, and HTTP cache.",
         "headers": {
             "Server": "nginx(?:/([\\d.]+))?\\;version:\\1",
-            "X-Fastcgi-Cache": ""
+            "X-Fastcgi-Cache": "",
+            "X-Nginx-Version": "^([\\d.]+)$\\;version:\\1"
         },
         "icon": "Nginx.svg",
+        "meta": {
+            "generator": "^nginx(?: ([\\d.]+))?(?: on .+)?$\\;version:\\1"
+        },
         "website": "https://nginx.org/en"
     },
     "Niagahoster": {
@@ -63692,6 +64016,25 @@
         ],
         "saas": true,
         "website": "https://www.novomind.com/en/shopsystem/novomind-ishop-software"
+    },
+    "OCEA": {
+        "cats": [
+            6
+        ],
+        "description": "OCEA is a hosted ecommerce platform for creating online stores and selling through social channels.",
+        "headers": {
+            "x-ocea-version": "^([0-9.]+)$\\;version:\\1"
+        },
+        "icon": "OCEA.png",
+        "js": {
+            "oceaConfig.generator": "^ocea$",
+            "oceaConfig.version": "^([0-9.]+)$\\;version:\\1"
+        },
+        "meta": {
+            "generator": "^ocea$"
+        },
+        "saas": true,
+        "website": "https://ocea.app"
     },
     "ONiAD": {
         "cats": [
@@ -65283,6 +65626,28 @@
         "oss": true,
         "scriptSrc": "opencms",
         "website": "https://www.opencms.org"
+    },
+    "OpenDXP": {
+        "cats": [
+            1,
+            6
+        ],
+        "description": "OpenDXP is an open-source digital experience platform for PIM, DAM, headless CMS, and composable commerce.",
+        "dom": "a[id^='opendxp-navigation-renderer-menu-']",
+        "headers": {
+            "X-OpenDXP-Cache-Date": "",
+            "X-OpenDXP-Output-Cache-Disable-Reason": "",
+            "X-OpenDXP-Output-Cache-Tag": "",
+            "X-Powered-By": "(?:^|\\n)opendxp(?:\\n|$)"
+        },
+        "icon": "OpenDXP.svg",
+        "implies": "PHP",
+        "oss": true,
+        "probe": {
+            "/admin/login": "OpenDXP"
+        },
+        "scripts": "opendxp_toolbox\\.",
+        "website": "https://opendxp.io"
     },
     "OpenElement": {
         "cats": [
@@ -67389,10 +67754,15 @@
         },
         "icon": "pagefly.svg",
         "js": {
+            "__pageflyProducts": "",
+            "__pagefly_heatmap_config__": "",
             "__pagefly_setting__": ""
         },
         "saas": true,
-        "scriptSrc": "cdn\\.pagefly\\.io",
+        "scriptSrc": [
+            "cdn\\.pagefly\\.io",
+            "cdn\\.shopify\\.com/extensions/[^/]+/pagefly-page-builder-\\d+/assets/pagefly-[\\w.-]+\\.js"
+        ],
         "website": "https://pagefly.io"
     },
     "PageLines": {
@@ -68651,6 +69021,25 @@
         "saas": true,
         "scriptSrc": "checkout-sdk\\.payva\\.com",
         "website": "https://www.payva.com"
+    },
+    "Payzito": {
+        "cats": [
+            41
+        ],
+        "description": "Payzito is a payment platform and plugin for WordPress and Joomla that provides payment links, forms, wallets, routing, and multiple gateways.",
+        "dom": "link[href*='/wp-content/plugins/payzito/'], link[href*='/wp-content/payzito_config/'], script[src*='/wp-content/plugins/payzito/'], script[src*='/wp-content/payzito_config/']",
+        "icon": "Payzito.png",
+        "pricing": [
+            "low",
+            "freemium",
+            "onetime",
+            "recurring"
+        ],
+        "scriptSrc": [
+            "/wp-content/(?:plugins/payzito/|payzito_config/).+\\.js\\?v=([\\d.]+)\\;version:\\1",
+            "/wp-content/(?:plugins/payzito/|payzito_config/)"
+        ],
+        "website": "https://payzito.net"
     },
     "Peachie": {
         "cats": [
@@ -71696,6 +72085,25 @@
         "scriptSrc": "metashop\\.dolphinsuite\\.com",
         "scripts": "metashop\\.dolphinsuite\\.com",
         "website": "https://metashop.dolphinsuite.com"
+    },
+    "PostFinance Checkout": {
+        "cats": [
+            41
+        ],
+        "cookies": {
+            "wc_postfinancecheckout_device_id": ""
+        },
+        "description": "PostFinance Checkout is a payment service provider for online shops with hosted checkout, ecommerce plugins, and APIs.",
+        "dom": "script[src^='https://checkout.postfinance.ch/s/'][src*='/payment/device.js']",
+        "icon": "PostFinance Checkout.png",
+        "pricing": [
+            "low",
+            "recurring",
+            "payg"
+        ],
+        "saas": true,
+        "scriptSrc": "checkout\\.postfinance\\.ch/s/\\d+/payment/device\\.js",
+        "website": "https://www.postfinance.ch/en/business/products/payment-collection/online-shop.html"
     },
     "PostHog": {
         "cats": [
@@ -76247,8 +76655,9 @@
         ],
         "description": "Railway is a cloud platform that simplifies building, deploying, and managing applications with easy setup and scalable infrastructure.",
         "headers": {
-            "Server": "^railway(?:-edge)?$",
-            "x-railway-edge": "^railway/"
+            "Server": "^railway(?:-(?:edge|hikari))?$",
+            "x-railway-edge": "^.+$",
+            "x-railway-request-id": "^.+$"
         },
         "icon": "Railway.svg",
         "pricing": [
@@ -81380,7 +81789,7 @@
         ],
         "description": "STUDIO is a Japan-based company and SaaS application for designing and hosting websites.",
         "dom": ".StudioCanvas, .publish-studio-style",
-        "icon": "STUDIO.svg",
+        "icon": "STUDIO.png",
         "implies": [
             "Vue.js",
             "Nuxt.js",
@@ -81389,7 +81798,7 @@
             "Google Tag Manager"
         ],
         "meta": {
-            "generator": "^STUDIO$"
+            "generator": "^(?:STUDIO|Studio\\.Design\\.HRC)$"
         },
         "pricing": [
             "low",
@@ -81918,6 +82327,7 @@
             "dwsid": ""
         },
         "description": "Salesforce Commerce Cloud is a cloud-based software-as-a-service (SaaS) ecommerce solution.",
+        "dom": "[href*='/on/demandware.static/'], [src*='/on/demandware.static/']",
         "headers": {
             "Server": "Demandware eCommerce Server"
         },
@@ -82053,6 +82463,25 @@
         "scriptSrc": "service\\.force\\.com",
         "website": "https://www.salesforce.com/au/products/service-cloud/"
     },
+    "Salesgear": {
+        "cats": [
+            32
+        ],
+        "description": "Salesgear is a sales engagement platform for prospect research, contact data, and multichannel outreach across email, LinkedIn, and calls.",
+        "dom": [
+            "script[src^='https://cdn.salesgear.io/js/script.js']",
+            "script[src^='https://cdn.salesgear.io/js/websiteScript.js']"
+        ],
+        "icon": "Salesgear.png",
+        "pricing": [
+            "low",
+            "freemium",
+            "recurring"
+        ],
+        "saas": true,
+        "scriptSrc": "cdn\\.salesgear\\.io/js/(?:script|websiteScript)\\.js",
+        "website": "https://www.salesgear.io"
+    },
     "Salesloft": {
         "cats": [
             32
@@ -82137,6 +82566,21 @@
         ],
         "saas": true,
         "website": "https://salonist.io"
+    },
+    "Salonkee": {
+        "cats": [
+            72
+        ],
+        "description": "Salonkee is a salon management and appointment scheduling platform for hair, beauty, and wellness businesses.",
+        "dom": "iframe[src*='salonkee.'][src*='/salon/'][src*='/widget']",
+        "icon": "Salonkee.svg",
+        "pricing": [
+            "low",
+            "recurring"
+        ],
+        "saas": true,
+        "scriptSrc": "cdn\\.wbuilder\\.salonkee\\.com/",
+        "website": "https://salonkee.com"
     },
     "Salsify": {
         "cats": [
@@ -83303,7 +83747,8 @@
         "cats": [
             1
         ],
-        "description": "Seldit is a CMS platform for building and managing websites and ecommerce stores.",
+        "description": "Seldit is a hosted platform for creating and managing ecommerce and service-based websites. It includes features for website management, online sales, payments, and customer management.",
+        "icon": "Seldit.png",
         "js": {
             "Seldit.cms": "^true$"
         },
@@ -84291,6 +84736,20 @@
         },
         "oss": true,
         "website": "https://github.com/shaka-project/shaka-player"
+    },
+    "Shakebug": {
+        "cats": [
+            13
+        ],
+        "description": "Shakebug is a bug and crash reporting platform with session monitoring and product analytics for mobile and web applications.",
+        "dom": "#shakebug-root.sb-ignore",
+        "pricing": [
+            "freemium",
+            "mid",
+            "recurring"
+        ],
+        "saas": true,
+        "website": "https://www.shakebug.com"
     },
     "Shanon": {
         "cats": [
@@ -85823,7 +86282,7 @@
         ],
         "cpe": "cpe:2.3:a:shopware:shopware:*:*:*:*:*:*:*:*",
         "description": "Shopware is an enterprise-level ecommerce platform.",
-        "dom": "input[name*='shopware_'], script[data-plugin-version^='Shopware']",
+        "dom": "#icons-default-shopware, input[name*='shopware_'], script[data-plugin-version^='Shopware']",
         "headers": {
             "sw-context-token": "^[\\w]{32}$\\;version:6",
             "sw-invalidation-states": "\\;version:6",
@@ -87279,6 +87738,25 @@
             "poa"
         ],
         "website": "https://www.sitepark.com/mittelstand/content-management-system/index.php"
+    },
+    "Sitepins": {
+        "cats": [
+            1
+        ],
+        "description": "Sitepins is a Git-based headless content management system for websites built with static site generators.",
+        "icon": "Sitepins.svg",
+        "oss": true,
+        "pricing": [
+            "low",
+            "freemium",
+            "onetime",
+            "recurring"
+        ],
+        "probe": {
+            "/.well-known/sitepins.json": "\"cms\"\\s*:\\s*\"Sitepins\""
+        },
+        "saas": true,
+        "website": "https://sitepins.com"
     },
     "Siter": {
         "cats": [
@@ -92079,6 +92557,16 @@
         "scripts": "www\\.strava\\.com",
         "website": "https://www.strava.com"
     },
+    "Streak.js": {
+        "cats": [
+            57,
+            18
+        ],
+        "description": "Streak.js is a React-based static site generator that pre-renders pages at build time and supports widget-based progressive enhancement.",
+        "dom": "style#critical-css ~ script#w-m[type='text/json']",
+        "icon": "Streak.js.png",
+        "website": "https://www.streakjs.com"
+    },
     "Streamlit": {
         "cats": [
             18
@@ -93841,10 +94329,9 @@
             66
         ],
         "description": "Shadcn-svelte is an adaptation of shadcn/ui for Svelte, offering accessible and customizable components.",
-        "dom": "link[href*='shadcn-svelte']",
+        "dom": "body[data-sveltekit-preload-data] [data-slot='button'][class*='focus-visible:ring-ring/50'], body[data-sveltekit-preload-data] [data-slot='dropdown-menu-trigger'][id^='bits-']",
         "icon": "ShadCnSvelte.svg",
         "oss": true,
-        "requires": "Svelte",
         "website": "https://www.shadcn-svelte.com"
     },
     "shadcn/ui": {
@@ -94982,6 +95469,9 @@
             "link[rel='modulepreload'][href*='tanstack-router-']"
         ],
         "icon": "TanStack.svg",
+        "js": {
+            "__TSS_START_OPTIONS__": ""
+        },
         "oss": true,
         "scriptSrc": "/static/.*npm\\.tanstack.*\\.js",
         "scripts": [
@@ -95610,6 +96100,15 @@
         "saas": true,
         "website": "https://teleporthq.io"
     },
+    "Telerik UI for ASP.NET AJAX": {
+        "cats": [
+            66
+        ],
+        "description": "Telerik UI for ASP.NET AJAX is a suite of user interface components for ASP.NET Web Forms applications.",
+        "implies": "Microsoft ASP.NET",
+        "scriptSrc": "Telerik\\.Web\\.UI\\.WebResource\\.axd",
+        "website": "https://www.telerik.com/products/aspnet-ajax"
+    },
     "Telescope": {
         "cats": [
             1
@@ -96060,6 +96559,23 @@
         "saas": true,
         "scriptSrc": "\\.themoneytizer\\.com/",
         "website": "https://www.themoneytizer.com"
+    },
+    "The Newsletter Plugin": {
+        "cats": [
+            87
+        ],
+        "description": "The Newsletter Plugin is a WordPress plugin for managing subscribers and creating, sending, and tracking email campaigns.",
+        "dom": "link#newsletter-css[href*='/wp-content/plugins/newsletter/style.css']",
+        "icon": "The Newsletter Plugin.svg",
+        "implies": "WordPress",
+        "oss": true,
+        "pricing": [
+            "freemium",
+            "low",
+            "onetime"
+        ],
+        "scriptSrc": "/wp-content/plugins/newsletter/(?:main|subscription/validate)\\.js(?:\\?ver=([\\d.]+))?\\;version:\\1",
+        "website": "https://www.thenewsletterplugin.com"
     },
     "The Rave": {
         "cats": [
@@ -98659,6 +99175,24 @@
         "scripts": "isTreatwellBrandedWidget",
         "url": "^https?://(?:www\\.)?treatwell\\.(?:at|be|ch|co\\.uk|com|de|es|fr|gr|ie|it|lt|nl|pt)(?:[/?#]|$)",
         "website": "https://www.treatwell.com"
+    },
+    "Trello": {
+        "cats": [
+            13
+        ],
+        "description": "Trello is a web-based collaboration and project management application that organizes work into boards, lists, and cards.",
+        "icon": "Trello.svg",
+        "js": {
+            "trelloVersion": ""
+        },
+        "pricing": [
+            "freemium",
+            "low",
+            "recurring"
+        ],
+        "saas": true,
+        "scriptSrc": "p\\.trellocdn\\.com/(?:card|embed)\\.min\\.js",
+        "website": "https://trello.com"
     },
     "Tremor": {
         "cats": [
@@ -103007,6 +103541,25 @@
         "scriptSrc": "us-content\\.vergic\\.com/",
         "website": "https://www.vergic.com"
     },
+    "Verificado": {
+        "cats": [
+            90
+        ],
+        "description": "Verificado is a customer feedback platform for collecting, moderating, analyzing, and displaying ecommerce reviews, NPS, and CSAT.",
+        "icon": "Verificado.svg",
+        "js": {
+            "VerificadoAI": ""
+        },
+        "pricing": [
+            "mid",
+            "recurring",
+            "poa"
+        ],
+        "saas": true,
+        "scriptSrc": "cdn-[\\w-]+\\.verificado\\.ai/(?:js/)?widget/main\\.js",
+        "scripts": "verificadoAIUriBaseCdn\\s*=\\s*['\"]https://cdn-[\\w-]+\\.verificado\\.ai",
+        "website": "https://verificado.ai"
+    },
     "Verifone 2Checkout": {
         "cats": [
             41
@@ -104640,7 +105193,16 @@
         ],
         "css": "\\.vue-notification-group",
         "description": "Vue.js is an open-source JavaScript framework for building user interfaces and single-page applications.",
-        "dom": ".vue-app, link[href*='docsify/themes/vue.css'], meta[data-vue-meta], div[class*='vue-scroll-picker-group'] > div[class*='vue-scroll-picker'], div[class*='Vue-Toastification__container']",
+        "dom": {
+            "#app, #__nuxt, .app, #root, .root, body, body > *, body > * > *, body > * > * > *": {
+                "properties": {
+                    "__vue__": ""
+                }
+            },
+            ".vue-app, link[href*='docsify/themes/vue.css'], meta[data-vue-meta], div[class*='vue-scroll-picker-group'] > div[class*='vue-scroll-picker'], div[class*='Vue-Toastification__container']": {
+                "exists": ""
+            }
+        },
         "icon": "vue.svg",
         "js": {
             "Vue": "",
@@ -105362,6 +105924,28 @@
         "implies": "WordPress",
         "saas": true,
         "website": "https://wpstratos.com"
+    },
+    "WP ULike": {
+        "cats": [
+            87
+        ],
+        "description": "WP ULike is a WordPress plugin for adding like, dislike, and reaction controls to website content.",
+        "icon": "WP ULike.svg",
+        "js": {
+            "WordpressUlike": ""
+        },
+        "oss": true,
+        "pricing": [
+            "low",
+            "freemium",
+            "recurring"
+        ],
+        "requires": "WordPress",
+        "scriptSrc": [
+            "/wp-content/plugins/wp-ulike/.+\\.js(?:\\?ver=(\\d+(?:\\.\\d+)+))?\\;version:\\1",
+            "/wp-content/plugins/wp-ulike-pro/.+\\.js"
+        ],
+        "website": "https://wpulike.com"
     },
     "WP-Optimize": {
         "cats": [
@@ -106448,6 +107032,20 @@
         "icon": "WebSocket.svg",
         "oss": true,
         "website": "https://en.wikipedia.org/wiki/WebSocket"
+    },
+    "WebToffee EU Order Withdrawal Button for WooCommerce": {
+        "cats": [
+            87
+        ],
+        "description": "WebToffee EU Order Withdrawal Button for WooCommerce is an open-source plugin for submitting and managing online order withdrawal requests.",
+        "icon": "WebToffee EU Order Withdrawal Button.png",
+        "implies": [
+            "WordPress",
+            "WooCommerce"
+        ],
+        "oss": true,
+        "scriptSrc": "/wp-content/plugins/wt-eu-withdrawal-button/assets/js/wbte-ewb-frontend(?:\\.min)?\\.js(?:\\?ver=([\\d.]+))?\\;version:\\1",
+        "website": "https://wordpress.org/plugins/wt-eu-withdrawal-button/"
     },
     "WebToffee Stripe Payment Plugin for WooCommerce": {
         "cats": [
@@ -108694,6 +109292,7 @@
         },
         "meta": {
             "generator": "^WordPress(?: ([\\d.]+))?\\;version:\\1",
+            "og:image": "/wp-content/uploads/",
             "shareaholic:wp_version": ""
         },
         "oss": true,
@@ -111516,6 +112115,24 @@
         "saas": true,
         "scriptSrc": "\\.zeotap\\.com",
         "website": "https://zeotap.com"
+    },
+    "Zephyr Cloud": {
+        "cats": [
+            62
+        ],
+        "description": "Zephyr Cloud is a deployment platform for micro-frontends and Module Federation applications.",
+        "headers": {
+            "x-server": "^zephyr-cloud$"
+        },
+        "icon": "Zephyr Cloud.svg",
+        "pricing": [
+            "freemium",
+            "low",
+            "recurring",
+            "poa"
+        ],
+        "saas": true,
+        "website": "https://zephyr-cloud.io/"
     },
     "Zepio": {
         "cats": [
