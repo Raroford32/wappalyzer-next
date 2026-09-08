@@ -462,9 +462,7 @@ class BrowserDriver:
         self.page = None
 
         if failures:
-            raise RuntimeError(
-                "Browser cleanup failed: " + "; ".join(failures)
-            )
+            raise RuntimeError("Browser cleanup failed: " + "; ".join(failures))
 
     async def close(self):
         try:
@@ -494,9 +492,7 @@ class DriverPool:
         self.playwright = await async_playwright().start()
         self.extension_dir = _prepare_extension_dir(os.path.abspath(extension_path))
 
-        created = await asyncio.gather(
-            *(self._create_driver() for _ in range(self.target_size))
-        )
+        created = await asyncio.gather(*(self._create_driver() for _ in range(self.target_size)))
 
         for driver in created:
             if driver:
@@ -511,9 +507,7 @@ class DriverPool:
             return
 
         additional = size - len(self.drivers)
-        created = await asyncio.gather(
-            *(self._create_driver() for _ in range(additional))
-        )
+        created = await asyncio.gather(*(self._create_driver() for _ in range(additional)))
 
         for driver in created:
             if driver:
@@ -866,9 +860,7 @@ async def _clear_target_state(driver, page):
         failures.append(f"origin storage: {error}")
 
     if failures:
-        raise RuntimeError(
-            "Target cleanup failed: " + "; ".join(failures)
-        )
+        raise RuntimeError("Target cleanup failed: " + "; ".join(failures))
 
 
 async def process_url(driver, url):

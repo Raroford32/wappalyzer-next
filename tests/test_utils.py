@@ -89,17 +89,13 @@ def test_direct_detection_beats_implied_detection(graph):
 
 
 def test_technology_cannot_satisfy_its_own_requirement(graph):
-    result = utils.create_result(
-        {"SelfSatisfying": {"version": "", "confidence": 100}}
-    )
+    result = utils.create_result({"SelfSatisfying": {"version": "", "confidence": 100}})
 
     assert result == {}
 
 
 def test_implied_technology_is_not_rejected_by_direct_detection_gates(graph):
-    result = utils.create_result(
-        {"Implying": {"version": "", "confidence": 100}}
-    )
+    result = utils.create_result({"Implying": {"version": "", "confidence": 100}})
 
     assert list(result) == ["Implying", "Restricted"]
 

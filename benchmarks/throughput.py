@@ -133,9 +133,7 @@ def main():
             measurement["same_as_worker_1"] = results == baseline
 
             if results != baseline:
-                raise RuntimeError(
-                    f"Detection drift at {workers} workers"
-                )
+                raise RuntimeError(f"Detection drift at {workers} workers")
 
             print(json.dumps(measurement, sort_keys=True), flush=True)
     finally:

@@ -110,11 +110,7 @@ def match_element_rule(element, rule):
         source = element.get("src", "")
 
         if source:
-            candidate = (
-                (True, "", 100)
-                if rule["src"] == ""
-                else match(rule["src"], source)
-            )
+            candidate = (True, "", 100) if rule["src"] == "" else match(rule["src"], source)
             best = better_match(candidate, best)
 
     return best

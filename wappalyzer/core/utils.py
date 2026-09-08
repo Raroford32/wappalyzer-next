@@ -167,23 +167,14 @@ def resolve_requirements(detections):
         if not tech_db.get(name, {}).get("requires")
         and not tech_db.get(name, {}).get("requiresCategory")
     }
-    pending = {
-        name: value
-        for name, value in detections.items()
-        if name not in admitted
-    }
+    pending = {name: value for name, value in detections.items() if name not in admitted}
 
     while pending:
-        trigger_detections = {
-            name: value.copy()
-            for name, value in admitted.items()
-        }
+        trigger_detections = {name: value.copy() for name, value in admitted.items()}
         resolve_excludes(trigger_detections)
         resolve_implies(trigger_detections)
         newly_admitted = [
-            name
-            for name in sorted(pending)
-            if requirements_met(name, trigger_detections)
+            name for name in sorted(pending) if requirements_met(name, trigger_detections)
         ]
 
         if not newly_admitted:

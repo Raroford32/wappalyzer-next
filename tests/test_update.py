@@ -63,12 +63,7 @@ const Driver = {
 
 
 def test_upstream_source_hash_is_pinned_to_bundled_generation():
-    lock_path = (
-        Path(__file__).parent.parent
-        / "wappalyzer"
-        / "data"
-        / "fingerprints.lock.json"
-    )
+    lock_path = Path(__file__).parent.parent / "wappalyzer" / "data" / "fingerprints.lock.json"
     lock = json.loads(lock_path.read_text(encoding="utf-8"))
 
     assert lock["source_sha256"] == update.EXPECTED_SOURCE_SHA256

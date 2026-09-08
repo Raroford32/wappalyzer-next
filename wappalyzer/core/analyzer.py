@@ -325,11 +325,7 @@ def collect_evidence(response, scan_type, cookie=None, timeout=30, deadline=None
                 response.url,
                 asset_budget,
             )
-            fetched_scripts.update(
-                (url, batch.get(url, ""))
-                for url in new_urls
-                if url in batch
-            )
+            fetched_scripts.update((url, batch.get(url, "")) for url in new_urls if url in batch)
             pending_scripts = []
 
             for url in new_urls:

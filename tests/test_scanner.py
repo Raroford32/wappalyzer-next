@@ -35,9 +35,7 @@ def test_interactive_callers_use_thread_fallback(monkeypatch):
     )
 
     with scanner.Wappalyzer(scan_type="fast", workers=2) as instance:
-        result = instance.analyze_many(
-            ["https://a.test", "https://b.test"]
-        )
+        result = instance.analyze_many(["https://a.test", "https://b.test"])
 
     assert list(result) == ["https://a.test", "https://b.test"]
 

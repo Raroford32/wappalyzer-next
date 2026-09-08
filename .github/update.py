@@ -17,9 +17,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = REPO_ROOT / "wappalyzer" / "data"
 EXTENSION_ARCHIVE = DATA_DIR / "wappalyzer-extension.zip"
 FINGERPRINT_LOCK = DATA_DIR / "fingerprints.lock.json"
-EXPECTED_SOURCE_SHA256 = (
-    "3a369e5580a1b4864001c021e0f5b524a7f08968b438fb7d5d7cbe887e8cee89"
-)
+EXPECTED_SOURCE_SHA256 = "3a369e5580a1b4864001c021e0f5b524a7f08968b438fb7d5d7cbe887e8cee89"
 MAX_EXTENSION_UNCOMPRESSED_BYTES = 512 * 1024 * 1024
 
 PROMPT_BLOCK = re.compile(

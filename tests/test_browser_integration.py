@@ -61,6 +61,5 @@ def test_every_warmed_browser_detects_first_navigation():
     assert list(results) == urls
     assert not errors
     assert all(
-        ("Hono" in technologies) == ("/hono/" in url)
-        for url, technologies in results.items()
+        ("Hono" in technologies) == ("/hono/" in url) for url, technologies in results.items()
     )

@@ -65,9 +65,7 @@ def values(value):
 
 
 def test_every_official_pattern_and_selector_compiles():
-    technologies = json.loads(
-        (DATA / "technologies.json").read_text(encoding="utf-8")
-    )
+    technologies = json.loads((DATA / "technologies.json").read_text(encoding="utf-8"))
     plan = build_detector_plan(technologies)
     invalid_patterns = []
 

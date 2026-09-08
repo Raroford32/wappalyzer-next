@@ -71,10 +71,13 @@ def test_stream_failure_closes_connection():
 
     response = FailingResponse([])
 
-    assert requester.get_response(
-        "https://example.test",
-        session=FakeSession(response),
-    ) is None
+    assert (
+        requester.get_response(
+            "https://example.test",
+            session=FakeSession(response),
+        )
+        is None
+    )
     assert response.closed
 
 
@@ -83,9 +86,12 @@ def test_total_timeout_applies_while_streaming(monkeypatch):
     timestamps = iter((0.0, 8.0))
     monkeypatch.setattr(requester.time, "monotonic", lambda: next(timestamps))
 
-    assert requester.get_response(
-        "https://example.test",
-        timeout=7,
-        session=FakeSession(response),
-    ) is None
+    assert (
+        requester.get_response(
+            "https://example.test",
+            timeout=7,
+            session=FakeSession(response),
+        )
+        is None
+    )
     assert response.closed

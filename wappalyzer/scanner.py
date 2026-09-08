@@ -480,9 +480,7 @@ class Wappalyzer:
                         for index, url in fallback_items
                     }
 
-                    for future in concurrent.futures.as_completed(
-                        fallback_futures
-                    ):
+                    for future in concurrent.futures.as_completed(fallback_futures):
                         index, url = fallback_futures[future]
 
                         try:
