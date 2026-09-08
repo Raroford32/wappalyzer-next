@@ -1,10 +1,13 @@
+import logging
 import os
-import sys
 import threading
+import time
 
 import requests
 from requests.adapters import HTTPAdapter
+from urllib3.util import Timeout
 
+logger = logging.getLogger(__name__)
 
 DEFAULT_CONNECT_TIMEOUT = float(os.getenv("WAPPALYZER_CONNECT_TIMEOUT", "5"))
 DEFAULT_READ_TIMEOUT = float(os.getenv("WAPPALYZER_READ_TIMEOUT", "30"))
@@ -61,6 +64,9 @@ def get_response(
         "Priority": "u=0, i",
         "TE": "trailers",
     }
+    response = None
+    started_at = time.monotonic()
+
     try:
         if cookie:
             headers["Cookie"] = cookie
@@ -69,8 +75,25 @@ def get_response(
             DEFAULT_CONNECT_TIMEOUT,
             DEFAULT_READ_TIMEOUT,
         )
+        total_timeout = None
+
         if isinstance(request_timeout, (int, float)):
-            request_timeout = (min(DEFAULT_CONNECT_TIMEOUT, request_timeout), request_timeout)
+            total_timeout = float(request_timeout)
+            request_timeout = Timeout(
+                connect=min(DEFAULT_CONNECT_TIMEOUT, request_timeout),
+                read=request_timeout,
+                total=request_timeout,
+            )
+        elif isinstance(request_timeout, tuple):
+            connect_timeout, read_timeout = request_timeout
+            total_timeout = connect_timeout + read_timeout
+            request_timeout = Timeout(
+                connect=connect_timeout,
+                read=read_timeout,
+                total=total_timeout,
+            )
+        elif isinstance(request_timeout, Timeout):
+            total_timeout = request_timeout.total
 
         response = (session or get_session()).get(
             url,
@@ -84,10 +107,14 @@ def get_response(
         content = bytearray()
 
         for chunk in response.iter_content(chunk_size=64 * 1024):
+            if total_timeout is not None and time.monotonic() - started_at > total_timeout:
+                raise requests.exceptions.Timeout(
+                    f"Response exceeded {total_timeout:g} seconds: {url}"
+                )
+
             content.extend(chunk)
 
             if len(content) > limit:
-                response.close()
                 raise requests.exceptions.RequestException(
                     f"Response exceeded {limit} bytes: {url}"
                 )
@@ -96,5 +123,8 @@ def get_response(
         response._content_consumed = True
         return response
     except requests.exceptions.RequestException as e:
-        print(e, file=sys.stderr)
+        if response is not None:
+            response.close()
+
+        logger.debug("HTTP request failed: %s", e)
         return None

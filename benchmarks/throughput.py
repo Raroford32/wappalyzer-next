@@ -10,7 +10,6 @@ from urllib.parse import urlparse
 
 from wappalyzer.scanner import Wappalyzer, automatic_worker_count
 
-
 FIXTURES = {
     "angular": ({}, '<main ng-version="22.1.5">Angular</main>'),
     "drupal": ({}, '<meta name="generator" content="Drupal 11.4.6">'),
@@ -20,6 +19,16 @@ FIXTURES = {
     "shopify": ({"X-Shopify-Stage": "production"}, "<main>Shopify</main>"),
     "vue": ({}, '<script src="/assets/vue-3.5.42.js"></script>'),
     "wordpress": ({}, '<meta name="generator" content="WordPress 7.1">'),
+}
+EXPECTED_TECHNOLOGIES = {
+    "angular": "Angular",
+    "drupal": "Drupal",
+    "hono": "Hono",
+    "next": "Next.js",
+    "react": "React",
+    "shopify": "Shopify",
+    "vue": "Vue.js",
+    "wordpress": "WordPress",
 }
 
 
@@ -75,6 +84,20 @@ def run(mode, workers, urls):
     }
 
 
+def verify_expected(results):
+    missing = {}
+
+    for path, technologies in results.items():
+        fixture = path.strip("/").split("/")[0]
+        expected = EXPECTED_TECHNOLOGIES[fixture]
+
+        if expected not in technologies:
+            missing[path] = expected
+
+    if missing:
+        raise RuntimeError(f"Missing expected detections: {missing}")
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode", choices=("fast", "balanced", "full"), required=True)
@@ -102,11 +125,18 @@ def main():
             random.Random(10_000 + workers).shuffle(ordered_urls)
             measurement = run(args.mode, workers, ordered_urls)
             results = measurement.pop("results")
+            verify_expected(results)
 
             if baseline is None:
                 baseline = results
 
             measurement["same_as_worker_1"] = results == baseline
+
+            if results != baseline:
+                raise RuntimeError(
+                    f"Detection drift at {workers} workers"
+                )
+
             print(json.dumps(measurement, sort_keys=True), flush=True)
     finally:
         server.shutdown()

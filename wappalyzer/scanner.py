@@ -1,7 +1,10 @@
 import asyncio
 import concurrent.futures
+import multiprocessing
 import os
+import sys
 import threading
+from concurrent.futures.process import BrokenProcessPool
 from pathlib import Path
 
 from wappalyzer.browser.analyzer import (
@@ -10,7 +13,8 @@ from wappalyzer.browser.analyzer import (
     merge_technologies,
     process_url,
 )
-from wappalyzer.core.analyzer import http_scan
+from wappalyzer.core.analyzer import configure_asset_workers, http_scan
+from wappalyzer.core.requester import DEFAULT_READ_TIMEOUT
 
 
 def _available_memory_bytes():
@@ -30,7 +34,7 @@ def _available_memory_bytes():
     try:
         return os.sysconf("SC_AVPHYS_PAGES") * os.sysconf("SC_PAGE_SIZE")
     except (OSError, ValueError):
-        return 0
+        return None
 
 
 def _available_cpu_count():
@@ -68,12 +72,26 @@ def automatic_worker_count(scan_type):
 
     available_memory = _available_memory_bytes()
     memory_bound = (
-        max(1, available_memory // (512 * 1024 * 1024)) if available_memory else cpu_count * 2
+        max(1, available_memory // (512 * 1024 * 1024))
+        if available_memory is not None
+        else cpu_count * 2
     )
     return max(1, min(cpu_count * 2, memory_bound))
 
 
-def _http_scan_job(url, scan_type, cookie, timeout):
+def _process_pool_supported():
+    main_module = sys.modules.get("__main__")
+    main_file = getattr(main_module, "__file__", None)
+    return bool(
+        main_file
+        and not str(main_file).startswith("<")
+        and Path(main_file).is_file()
+        and "ipykernel" not in sys.modules
+    )
+
+
+def _http_scan_job(url, scan_type, cookie, timeout, asset_workers):
+    configure_asset_workers(asset_workers)
     return url, http_scan(
         url,
         scan_type,
@@ -111,13 +129,14 @@ class _FullScanBackend:
         self.workers = workers
         self.timeout = timeout
         self.pool = None
-        self.pool_size = 0
 
     async def ensure_pool(self, size):
         if self.pool:
-            if size > self.pool_size:
+            if size > self.pool.size:
                 await self.pool.grow_to(size)
-                self.pool_size = self.pool.size
+
+            if self.pool.size == 0:
+                raise RuntimeError("No healthy browser driver is available")
 
             return
 
@@ -130,7 +149,6 @@ class _FullScanBackend:
             raise
 
         self.pool = pool
-        self.pool_size = pool.size
 
     async def analyze_url(self, url, cookie=None):
         await self.ensure_pool(1)
@@ -140,7 +158,10 @@ class _FullScanBackend:
                 for cookie_dict in cookie_to_cookies(cookie):
                     driver.add_cookie(cookie_dict)
 
-            result_url, detections = await process_url(driver, url)
+            result_url, detections = await asyncio.wait_for(
+                process_url(driver, url),
+                timeout=max(5, self.timeout * 3),
+            )
 
         return result_url, merge_technologies(detections)
 
@@ -182,6 +203,12 @@ class _FullScanBackend:
                 if error:
                     indexed_errors[index] = error
 
+                if error and on_error:
+                    on_error(url, error)
+
+                if on_result:
+                    on_result(url, technologies)
+
                 queue.task_done()
 
         workers = [asyncio.create_task(worker()) for _ in range(worker_count)]
@@ -204,25 +231,18 @@ class _FullScanBackend:
             input_url = urls[index]
             results[input_url] = technologies
 
-            if index in indexed_errors and on_error:
-                on_error(input_url, indexed_errors[index])
-
-            if on_result:
-                on_result(input_url, technologies)
-
         return results
 
     async def close(self):
         if self.pool:
             await self.pool.cleanup()
             self.pool = None
-            self.pool_size = 0
 
 
 class Wappalyzer:
     SUPPORTED_SCAN_TYPES = {"fast", "balanced", "full"}
 
-    def __init__(self, scan_type="full", workers=None, cookie=None, timeout=30):
+    def __init__(self, scan_type="full", workers=None, cookie=None, timeout=None):
         scan_type = scan_type.lower()
 
         if scan_type not in self.SUPPORTED_SCAN_TYPES:
@@ -233,6 +253,9 @@ class Wappalyzer:
 
         if workers is None:
             workers = automatic_worker_count(scan_type)
+
+        if timeout is None:
+            timeout = DEFAULT_READ_TIMEOUT
 
         if workers < 1:
             raise ValueError("workers must be at least 1")
@@ -349,8 +372,23 @@ class Wappalyzer:
 
     def _analyze_many_http(self, urls, cookie=None, on_result=None, on_error=None):
         worker_count = min(self.workers, len(urls))
+        asset_workers = max(1, _available_cpu_count() // worker_count)
         indexed_results = {}
         indexed_errors = {}
+        emitted = set()
+
+        def emit(index, url):
+            if index in emitted:
+                return
+
+            emitted.add(index)
+            technologies = indexed_results[index][1]
+
+            if index in indexed_errors and on_error:
+                on_error(url, indexed_errors[index])
+
+            if on_result:
+                on_result(url, technologies)
 
         if worker_count == 1:
             for index, url in enumerate(urls):
@@ -360,10 +398,13 @@ class Wappalyzer:
                         self.scan_type,
                         cookie,
                         self.timeout,
+                        asset_workers,
                     )
                 except Exception as exc:
                     indexed_results[index] = (url, {})
                     indexed_errors[index] = exc
+
+                emit(index, url)
         else:
             with self._lock:
                 if self._http_executor and worker_count > self._http_pool_size:
@@ -371,32 +412,86 @@ class Wappalyzer:
                     self._http_executor = None
 
                 if not self._http_executor:
-                    self._http_executor = concurrent.futures.ProcessPoolExecutor(
-                        max_workers=worker_count,
-                    )
+                    if _process_pool_supported():
+                        self._http_executor = concurrent.futures.ProcessPoolExecutor(
+                            max_workers=worker_count,
+                            mp_context=multiprocessing.get_context("spawn"),
+                        )
+                    else:
+                        self._http_executor = concurrent.futures.ThreadPoolExecutor(
+                            max_workers=worker_count,
+                        )
                     self._http_pool_size = worker_count
 
                 executor = self._http_executor
 
-            future_to_item = {
-                executor.submit(
-                    _http_scan_job,
-                    url,
-                    self.scan_type,
-                    cookie,
-                    self.timeout,
-                ): (index, url)
-                for index, url in enumerate(urls)
-            }
+            items = list(enumerate(urls))
+            future_to_item = {}
+            fallback_items = []
+
+            for item_position, (index, url) in enumerate(items):
+                try:
+                    future = executor.submit(
+                        _http_scan_job,
+                        url,
+                        self.scan_type,
+                        cookie,
+                        self.timeout,
+                        asset_workers,
+                    )
+                except BrokenProcessPool:
+                    fallback_items.extend(items[item_position:])
+                    break
+                else:
+                    future_to_item[future] = (index, url)
 
             for future in concurrent.futures.as_completed(future_to_item):
                 index, url = future_to_item[future]
 
                 try:
                     indexed_results[index] = future.result()
+                except BrokenProcessPool:
+                    fallback_items.append((index, url))
                 except Exception as exc:
                     indexed_results[index] = (url, {})
                     indexed_errors[index] = exc
+
+                if index in indexed_results:
+                    emit(index, url)
+
+            if fallback_items:
+                with self._lock:
+                    executor.shutdown(wait=True, cancel_futures=True)
+                    self._http_executor = None
+                    self._http_pool_size = 0
+
+                with concurrent.futures.ThreadPoolExecutor(
+                    max_workers=min(worker_count, len(fallback_items))
+                ) as fallback:
+                    fallback_futures = {
+                        fallback.submit(
+                            _http_scan_job,
+                            url,
+                            self.scan_type,
+                            cookie,
+                            self.timeout,
+                            asset_workers,
+                        ): (index, url)
+                        for index, url in fallback_items
+                    }
+
+                    for future in concurrent.futures.as_completed(
+                        fallback_futures
+                    ):
+                        index, url = fallback_futures[future]
+
+                        try:
+                            indexed_results[index] = future.result()
+                        except Exception as exc:
+                            indexed_results[index] = (url, {})
+                            indexed_errors[index] = exc
+
+                        emit(index, url)
 
         results = {}
 
@@ -404,19 +499,13 @@ class Wappalyzer:
             _result_url, technologies = indexed_results[index]
             results[url] = technologies
 
-            if index in indexed_errors and on_error:
-                on_error(url, indexed_errors[index])
-
-            if on_result:
-                on_result(url, technologies)
-
         return results
 
 
 Scanner = Wappalyzer
 
 
-def analyze(url, scan_type="full", workers=None, cookie=None, timeout=30):
+def analyze(url, scan_type="full", workers=None, cookie=None, timeout=None):
     with Wappalyzer(
         scan_type=scan_type,
         workers=workers,

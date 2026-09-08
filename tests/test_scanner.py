@@ -1,3 +1,7 @@
+import asyncio
+
+import pytest
+
 from wappalyzer import scanner
 
 
@@ -14,8 +18,32 @@ def test_worker_environment_override(monkeypatch):
     assert scanner.automatic_worker_count("full") == 19
 
 
+def test_zero_available_memory_selects_minimum_browser_worker(monkeypatch):
+    monkeypatch.delenv("WAPPALYZER_WORKERS", raising=False)
+    monkeypatch.setattr(scanner, "_available_cpu_count", lambda: 12)
+    monkeypatch.setattr(scanner, "_available_memory_bytes", lambda: 0)
+
+    assert scanner.automatic_worker_count("full") == 1
+
+
+def test_interactive_callers_use_thread_fallback(monkeypatch):
+    monkeypatch.setitem(scanner.sys.modules, "ipykernel", object())
+    monkeypatch.setattr(
+        scanner,
+        "_http_scan_job",
+        lambda url, scan_type, cookie, timeout, asset_workers: (url, {}),
+    )
+
+    with scanner.Wappalyzer(scan_type="fast", workers=2) as instance:
+        result = instance.analyze_many(
+            ["https://a.test", "https://b.test"]
+        )
+
+    assert list(result) == ["https://a.test", "https://b.test"]
+
+
 def test_http_results_and_callbacks_follow_input_order(monkeypatch):
-    def fake_job(url, scan_type, cookie, timeout):
+    def fake_job(url, scan_type, cookie, timeout, asset_workers):
         return url, {
             url: {
                 "version": "",
@@ -36,3 +64,34 @@ def test_http_results_and_callbacks_follow_input_order(monkeypatch):
 
     assert list(result) == ["https://b.test", "https://a.test"]
     assert callback_order == ["https://b.test", "https://a.test"]
+
+
+def test_batch_request_failures_reach_error_callback(monkeypatch):
+    def failed_job(url, scan_type, cookie, timeout, asset_workers):
+        raise RuntimeError("network down")
+
+    monkeypatch.setattr(scanner, "_http_scan_job", failed_job)
+    errors = {}
+
+    with scanner.Wappalyzer(scan_type="fast", workers=1) as instance:
+        result = instance.analyze_many(
+            ["https://offline.test"],
+            on_error=lambda url, error: errors.setdefault(url, str(error)),
+        )
+
+    assert result == {"https://offline.test": {}}
+    assert errors == {"https://offline.test": "network down"}
+
+
+def test_empty_browser_pool_fails_instead_of_returning_empty_success():
+    class EmptyPool:
+        size = 0
+
+        async def grow_to(self, size):
+            return None
+
+    backend = scanner._FullScanBackend()
+    backend.pool = EmptyPool()
+
+    with pytest.raises(RuntimeError, match="No healthy browser driver"):
+        asyncio.run(backend.ensure_pool(1))

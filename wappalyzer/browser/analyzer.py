@@ -1,8 +1,9 @@
 import asyncio
 import json
+import logging
 import os
 import shutil
-import sys
+import stat
 import tempfile
 import zipfile
 from contextlib import asynccontextmanager
@@ -13,16 +14,23 @@ from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from playwright.async_api import async_playwright
 
 from wappalyzer.core.config import extension_path
+from wappalyzer.core.matcher import better_version
 from wappalyzer.core.requester import VERIFY_TLS
-from wappalyzer.core.utils import create_result
+from wappalyzer.core.utils import enrich_result
 
+logger = logging.getLogger(__name__)
 
 WAPPALYZER_POPUP_PATH = "html/popup.html"
 USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
-BLOCKED_RESOURCE_TYPES = {"image", "font", "media"}
+BLOCKED_RESOURCE_TYPES = frozenset(
+    item.strip()
+    for item in os.getenv("WAPPALYZER_BLOCK_RESOURCE_TYPES", "").split(",")
+    if item.strip()
+)
+MAX_EXTENSION_UNCOMPRESSED_BYTES = 512 * 1024 * 1024
 
 SELECT_TARGET_TAB_SCRIPT = """
-async (targetUrl) => {
+async ({ targetUrl, timeoutMs }) => {
   const parseUrl = (value) => {
     try {
       return new URL(value)
@@ -57,7 +65,10 @@ async (targetUrl) => {
     return null
   }
 
-  const tabs = await queryTabs()
+  const tabs = await Promise.race([
+    queryTabs(),
+    new Promise((resolve) => setTimeout(() => resolve([]), timeoutMs)),
+  ])
   const isTargetTab = (tab, exact) => {
     if (!tab || !tab.url) {
       return false
@@ -83,7 +94,7 @@ async (targetUrl) => {
 """
 
 GET_DETECTIONS_FOR_TAB_SCRIPT = """
-async (selectedTab) => {
+async ({ selectedTab, timeoutMs }) => {
   const sendMessage = (message) => {
     if (typeof browser !== 'undefined' && browser.runtime?.sendMessage) {
       return browser.runtime
@@ -135,11 +146,19 @@ async (selectedTab) => {
     return []
   }
 
-  const response = await sendMessage({
-    source: 'popup.js',
-    func: 'getDetectionsForTab',
-    args: [{ id: selectedTab.id, url: selectedTab.url }],
-  })
+  const response = await Promise.race([
+    sendMessage({
+      source: 'popup.js',
+      func: 'getDetectionsForTab',
+      args: [{ id: selectedTab.id, url: selectedTab.url }],
+    }),
+    new Promise((resolve) =>
+      setTimeout(
+        () => resolve({ __error: 'Extension detection request timed out' }),
+        timeoutMs
+      )
+    ),
+  ])
 
   if (response?.__error) {
     return response
@@ -308,10 +327,38 @@ def _validate_extension_dir(extension_dir):
 def _prepare_extension_dir(extension_archive_path):
     extension_dir = Path(tempfile.mkdtemp(prefix="wappalyzer-extension-"))
 
-    with zipfile.ZipFile(extension_archive_path) as archive:
-        archive.extractall(extension_dir)
+    try:
+        with zipfile.ZipFile(extension_archive_path) as archive:
+            destination = extension_dir.resolve()
+            seen = set()
+            total_size = 0
 
-    _validate_extension_dir(extension_dir)
+            for member in archive.infolist():
+                member_path = (destination / member.filename).resolve()
+                normalized_name = member.filename.casefold()
+                mode = member.external_attr >> 16
+
+                if destination not in member_path.parents and member_path != destination:
+                    raise RuntimeError(f"Unsafe extension archive path: {member.filename}")
+
+                if normalized_name in seen:
+                    raise RuntimeError(f"Duplicate extension archive path: {member.filename}")
+
+                if stat.S_ISLNK(mode):
+                    raise RuntimeError(f"Extension archive contains a symlink: {member.filename}")
+
+                seen.add(normalized_name)
+                total_size += member.file_size
+
+                if total_size > MAX_EXTENSION_UNCOMPRESSED_BYTES:
+                    raise RuntimeError("Extension archive exceeds the extraction size limit")
+
+            archive.extractall(extension_dir)
+
+        _validate_extension_dir(extension_dir)
+    except Exception:
+        shutil.rmtree(extension_dir, ignore_errors=True)
+        raise
 
     return extension_dir
 
@@ -384,34 +431,44 @@ class BrowserDriver:
         await self.context.add_cookies(cookies)
 
     async def reset(self):
+        failures = []
+
         try:
-            await self.context.clear_cookies()
-        except Exception:
-            pass
+            await asyncio.wait_for(self.context.clear_cookies(), timeout=2)
+        except Exception as error:
+            failures.append(f"cookies: {error}")
 
         for worker in tuple(self.context.service_workers):
             if worker.url.startswith("chrome-extension://"):
                 continue
 
             try:
-                await worker.evaluate("() => self.registration && self.registration.unregister()")
-            except Exception:
-                pass
+                await asyncio.wait_for(
+                    worker.evaluate("() => self.registration && self.registration.unregister()"),
+                    timeout=2,
+                )
+            except Exception as error:
+                failures.append(f"service worker: {error}")
 
         for page in tuple(self.context.pages):
             if page is self.popup or page.is_closed():
                 continue
 
             try:
-                await page.close()
-            except Exception:
-                pass
+                await asyncio.wait_for(page.close(), timeout=2)
+            except Exception as error:
+                failures.append(f"page close: {error}")
 
         self.page = None
 
+        if failures:
+            raise RuntimeError(
+                "Browser cleanup failed: " + "; ".join(failures)
+            )
+
     async def close(self):
         try:
-            await self.context.close()
+            await asyncio.wait_for(self.context.close(), timeout=5)
         except Exception:
             pass
 
@@ -420,7 +477,7 @@ class BrowserDriver:
 
 class DriverPool:
     def __init__(self, size=3, max_retries=3, timeout=30):
-        self.size = size
+        self.target_size = size
         self.max_retries = max_retries
         self.timeout = timeout
         self.queue = asyncio.Queue()
@@ -429,13 +486,19 @@ class DriverPool:
         self.extension_dir = None
         self.drivers = []
 
+    @property
+    def size(self):
+        return len(self.drivers)
+
     async def start(self):
         self.playwright = await async_playwright().start()
         self.extension_dir = _prepare_extension_dir(os.path.abspath(extension_path))
 
-        for _ in range(self.size):
-            driver = await self._create_driver()
+        created = await asyncio.gather(
+            *(self._create_driver() for _ in range(self.target_size))
+        )
 
+        for driver in created:
             if driver:
                 self.drivers.append(driver)
                 await self.queue.put(driver)
@@ -443,32 +506,32 @@ class DriverPool:
         if self.queue.empty():
             raise RuntimeError("Failed to initialize Chromium browser contexts")
 
-        self.size = len(self.drivers)
-
     async def grow_to(self, size):
         if self.closed or size <= self.size:
             return
 
         additional = size - len(self.drivers)
-        for _ in range(additional):
-            driver = await self._create_driver()
+        created = await asyncio.gather(
+            *(self._create_driver() for _ in range(additional))
+        )
 
+        for driver in created:
             if driver:
                 self.drivers.append(driver)
                 await self.queue.put(driver)
-
-        self.size = len(self.drivers)
 
     async def _create_driver(self):
         for attempt in range(self.max_retries):
             user_data_dir = tempfile.mkdtemp(prefix="wappalyzer-chromium-")
             context = None
+            timeout_ms = self.timeout * 1000
 
             try:
                 context = await self.playwright.chromium.launch_persistent_context(
                     user_data_dir,
                     channel="chromium",
                     headless=True,
+                    timeout=timeout_ms,
                     viewport={"width": 1366, "height": 900},
                     user_agent=USER_AGENT,
                     timezone_id="UTC",
@@ -495,8 +558,19 @@ class DriverPool:
                         "--no-default-browser-check",
                     ],
                 )
+                context.on(
+                    "console",
+                    lambda message: (
+                        logger.debug("Chromium console: %s", message.text)
+                        if message.type == "error"
+                        else None
+                    ),
+                )
+                context.on(
+                    "weberror",
+                    lambda error: logger.warning("Chromium page error: %s", error),
+                )
 
-                timeout_ms = self.timeout * 1000
                 context.set_default_timeout(timeout_ms)
                 context.set_default_navigation_timeout(timeout_ms)
 
@@ -509,6 +583,7 @@ class DriverPool:
                 await context.route("**/*", route_handler)
 
                 extension_id = await self._get_extension_id(context)
+                await self._wait_for_extension_ready(context)
                 pages = context.pages
                 page = pages[0] if pages else await context.new_page()
 
@@ -529,24 +604,61 @@ class DriverPool:
             except Exception as e:
                 if context:
                     try:
-                        await context.close()
+                        await asyncio.wait_for(context.close(), timeout=5)
                     except Exception:
                         pass
 
                 shutil.rmtree(user_data_dir, ignore_errors=True)
-                print(f"Attempt {attempt + 1} failed: {str(e)}", file=sys.stderr)
+                logger.warning("Browser attempt %s failed: %s", attempt + 1, e)
                 await asyncio.sleep(1)
 
         return None
 
     async def _get_extension_id(self, context):
+        service_worker = await self._get_service_worker(context)
+
+        return service_worker.url.split("/")[2]
+
+    async def _get_service_worker(self, context):
         service_workers = context.service_workers
         service_worker = service_workers[0] if service_workers else None
 
         if service_worker is None:
             service_worker = await context.wait_for_event("serviceworker", timeout=10000)
 
-        return service_worker.url.split("/")[2]
+        return service_worker
+
+    async def _wait_for_extension_ready(self, context):
+        service_worker = await self._get_service_worker(context)
+        deadline = asyncio.get_running_loop().time() + self.timeout
+        last_state = None
+
+        while asyncio.get_running_loop().time() < deadline:
+            try:
+                last_state = await asyncio.wait_for(
+                    service_worker.evaluate(
+                        """
+                        () => {
+                          return {
+                            count:
+                              globalThis.__WAPPALYZER_TECHNOLOGY_COUNT__ || 0,
+                            ready:
+                              globalThis.__WAPPALYZER_SCANNER_READY__ === true,
+                          }
+                        }
+                        """
+                    ),
+                    timeout=2,
+                )
+            except Exception:
+                last_state = None
+
+            if last_state and last_state.get("ready") and last_state.get("count", 0) > 0:
+                return
+
+            await asyncio.sleep(0.1)
+
+        raise RuntimeError(f"Wappalyzer extension did not become ready: {last_state!r}")
 
     @asynccontextmanager
     async def get_driver(self):
@@ -558,30 +670,40 @@ class DriverPool:
         except asyncio.TimeoutError as error:
             raise RuntimeError("No healthy browser driver is available") from error
 
-        reusable = True
-
         try:
             yield driver
         except Exception:
-            reusable = False
-            await driver.close()
-            if driver in self.drivers:
-                self.drivers.remove(driver)
-
-            replacement = await self._create_driver()
-
-            if replacement:
-                self.drivers.append(replacement)
-                await self.queue.put(replacement)
-
+            await self._retire_and_replace(driver)
             raise
-        finally:
-            if reusable:
-                if self.closed:
-                    await driver.close()
-                else:
-                    await driver.reset()
-                    await self.queue.put(driver)
+        else:
+            if self.closed:
+                if driver in self.drivers:
+                    self.drivers.remove(driver)
+                await driver.close()
+                return
+
+            try:
+                await driver.reset()
+            except Exception:
+                await self._retire_and_replace(driver)
+                raise
+
+            await self.queue.put(driver)
+
+    async def _retire_and_replace(self, driver):
+        if driver in self.drivers:
+            self.drivers.remove(driver)
+
+        await driver.close()
+
+        if self.closed:
+            return
+
+        replacement = await self._create_driver()
+
+        if replacement:
+            self.drivers.append(replacement)
+            await self.queue.put(replacement)
 
     async def cleanup(self):
         if self.closed:
@@ -591,12 +713,14 @@ class DriverPool:
         drivers = list(self.drivers)
         self.drivers = []
 
-        for driver in drivers:
-            await driver.close()
+        await asyncio.gather(
+            *(driver.close() for driver in drivers),
+            return_exceptions=True,
+        )
 
         if self.playwright:
             try:
-                await self.playwright.stop()
+                await asyncio.wait_for(self.playwright.stop(), timeout=5)
             except Exception:
                 pass
 
@@ -635,7 +759,14 @@ async def _page_activity(page):
 
 async def _get_detections(driver, target_url):
     popup = await _ensure_popup(driver)
-    selected_tab = await popup.evaluate(SELECT_TARGET_TAB_SCRIPT, target_url)
+    extension_timeout_ms = max(1_000, min(driver.timeout_ms, 15_000))
+    selected_tab = await popup.evaluate(
+        SELECT_TARGET_TAB_SCRIPT,
+        {
+            "targetUrl": target_url,
+            "timeoutMs": extension_timeout_ms,
+        },
+    )
 
     if not selected_tab:
         return []
@@ -649,10 +780,16 @@ async def _get_detections(driver, target_url):
     hard_max = max(1.0, driver.timeout_ms / 1000 - 1)
 
     while True:
-        response = await popup.evaluate(GET_DETECTIONS_FOR_TAB_SCRIPT, selected_tab)
+        response = await popup.evaluate(
+            GET_DETECTIONS_FOR_TAB_SCRIPT,
+            {
+                "selectedTab": selected_tab,
+                "timeoutMs": extension_timeout_ms,
+            },
+        )
 
         if isinstance(response, dict) and response.get("__error"):
-            print(f"Wappalyzer extension error: {response['__error']}", file=sys.stderr)
+            logger.warning("Wappalyzer extension error: %s", response["__error"])
             response = []
 
         detections = response if isinstance(response, list) else []
@@ -683,30 +820,55 @@ async def _get_detections(driver, target_url):
 
 
 async def _clear_target_state(driver, page):
-    try:
-        await page.evaluate("() => { localStorage.clear(); sessionStorage.clear(); }")
-    except Exception:
-        pass
+    failures = []
 
     try:
-        origin = await page.evaluate("() => location.origin")
-        session = await driver.context.new_cdp_session(page)
+        await asyncio.wait_for(
+            page.evaluate("() => { localStorage.clear(); sessionStorage.clear(); }"),
+            timeout=2,
+        )
+    except Exception as error:
+        failures.append(f"web storage: {error}")
+
+    try:
+        origin = await asyncio.wait_for(
+            page.evaluate("() => location.origin"),
+            timeout=2,
+        )
+        session = await asyncio.wait_for(
+            driver.context.new_cdp_session(page),
+            timeout=2,
+        )
 
         try:
-            await session.send("Network.clearBrowserCache")
+            await asyncio.wait_for(
+                session.send("Network.clearBrowserCache"),
+                timeout=2,
+            )
 
             if origin and origin != "null":
-                await session.send(
-                    "Storage.clearDataForOrigin",
-                    {
-                        "origin": origin,
-                        "storageTypes": "all",
-                    },
+                await asyncio.wait_for(
+                    session.send(
+                        "Storage.clearDataForOrigin",
+                        {
+                            "origin": origin,
+                            "storageTypes": "all",
+                        },
+                    ),
+                    timeout=2,
                 )
         finally:
-            await session.detach()
-    except Exception:
-        pass
+            try:
+                await asyncio.wait_for(session.detach(), timeout=2)
+            except Exception as error:
+                failures.append(f"CDP detach: {error}")
+    except Exception as error:
+        failures.append(f"origin storage: {error}")
+
+    if failures:
+        raise RuntimeError(
+            "Target cleanup failed: " + "; ".join(failures)
+        )
 
 
 async def process_url(driver, url):
@@ -732,15 +894,23 @@ async def process_url(driver, url):
 
         return url, await _get_detections(driver, page.url)
     finally:
-        await _clear_target_state(driver, page)
+        cleanup_failures = []
 
         try:
-            await page.close()
-        except Exception:
-            pass
+            await _clear_target_state(driver, page)
+        except Exception as error:
+            cleanup_failures.append(str(error))
+
+        try:
+            await asyncio.wait_for(page.close(), timeout=2)
+        except Exception as error:
+            cleanup_failures.append(f"page close: {error}")
 
         if driver.page is page:
             driver.page = None
+
+        if cleanup_failures:
+            raise RuntimeError("; ".join(cleanup_failures))
 
 
 def cookie_to_cookies(cookie):
@@ -764,22 +934,29 @@ def merge_technologies(detections):
     tech_map = {}
 
     for detection in detections:
-        tech_name = detection["technology"]
+        tech_name = detection.get("technology")
+
+        if not tech_name:
+            continue
+
+        pattern = detection.get("pattern") or {}
+        confidence = pattern.get("confidence", detection.get("confidence", 100))
 
         if tech_name not in tech_map:
             tech_map[tech_name] = {
                 "version": detection.get("version", ""),
-                "confidence": detection["pattern"]["confidence"],
+                "confidence": confidence,
             }
         else:
             existing = tech_map[tech_name]
-
-            if not existing["version"] and detection.get("version"):
-                existing["version"] = detection["version"]
+            existing["version"] = better_version(
+                detection.get("version", ""),
+                existing["version"],
+            )
 
             existing["confidence"] = min(
-                existing["confidence"] + detection["pattern"]["confidence"],
+                existing["confidence"] + confidence,
                 100,
             )
 
-    return create_result(tech_map)
+    return enrich_result(tech_map)

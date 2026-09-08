@@ -1,4 +1,7 @@
 import asyncio
+import zipfile
+
+import pytest
 
 from wappalyzer.browser import analyzer
 
@@ -77,3 +80,58 @@ def test_process_url_uses_and_closes_a_fresh_page(monkeypatch):
     )
     assert driver.context.pages_created[0].closed
     assert driver.page is None
+
+
+def test_cleanup_failure_invalidates_browser_driver(monkeypatch):
+    driver = FakeDriver()
+
+    async def no_stimulation(page):
+        return None
+
+    async def detections(current_driver, url):
+        return []
+
+    async def failed_cleanup(current_driver, page):
+        raise RuntimeError("storage remained")
+
+    monkeypatch.setattr(analyzer, "_stimulate_page", no_stimulation)
+    monkeypatch.setattr(analyzer, "_get_detections", detections)
+    monkeypatch.setattr(analyzer, "_clear_target_state", failed_cleanup)
+
+    with pytest.raises(RuntimeError, match="storage remained"):
+        asyncio.run(analyzer.process_url(driver, "https://example.test"))
+
+    assert driver.context.pages_created[0].closed
+    assert driver.page is None
+
+
+def test_browser_detection_versions_merge_deterministically():
+    detections = [
+        {
+            "technology": "React",
+            "version": "10",
+            "pattern": {"confidence": 50},
+        },
+        {
+            "technology": "React",
+            "version": "9",
+            "pattern": {"confidence": 50},
+        },
+    ]
+
+    forward = analyzer.merge_technologies(detections)
+    reverse = analyzer.merge_technologies(reversed(detections))
+
+    assert forward == reverse
+    assert forward["React"]["version"] == "10"
+    assert forward["React"]["confidence"] == 100
+
+
+def test_extension_archive_rejects_path_traversal(tmp_path):
+    archive_path = tmp_path / "extension.zip"
+
+    with zipfile.ZipFile(archive_path, "w") as archive:
+        archive.writestr("../outside.txt", "unsafe")
+
+    with pytest.raises(RuntimeError, match="Unsafe extension archive path"):
+        analyzer._prepare_extension_dir(archive_path)

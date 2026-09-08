@@ -72,9 +72,9 @@ def main():
     parser.add_argument(
         "-t",
         "--timeout",
-        help="maximum seconds to wait for a page load in full scans",
+        help="total request or page timeout in seconds",
         dest="timeout",
-        default=30,
+        default=None,
         type=positive_int,
     )
     args = parser.parse_args()
@@ -89,7 +89,7 @@ def main():
         return bool(args.json_output_file or args.csv_output_file or args.html_output_file)
 
     def process_urls(
-        urls, num_workers=None, cookie=None, scan_type="full", should_print=False, timeout=30
+        urls, num_workers=None, cookie=None, scan_type="full", should_print=False, timeout=None
     ):
         urls = [url for url in urls if url]
 
