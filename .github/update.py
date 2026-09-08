@@ -20,6 +20,7 @@ EXTENSION_ARCHIVE = DATA_DIR / "wappalyzer-extension.zip"
 FINGERPRINT_LOCK = DATA_DIR / "fingerprints.lock.json"
 EXPECTED_SOURCE_SHA256 = "3a369e5580a1b4864001c021e0f5b524a7f08968b438fb7d5d7cbe887e8cee89"
 MAX_EXTENSION_UNCOMPRESSED_BYTES = 512 * 1024 * 1024
+DETERMINISTIC_ZIP_DATETIME = (1980, 1, 1, 0, 0, 0)
 SOURCE_HASH_DECLARATION = re.compile(
     r'^EXPECTED_SOURCE_SHA256 = "[a-f0-9]{64}"$',
     re.MULTILINE,
@@ -231,7 +232,20 @@ def write_chromium_extension_archive(extension_dir, archive_path):
     with zipfile.ZipFile(archive_path, "w", zipfile.ZIP_DEFLATED) as archive:
         for path in sorted(extension_dir.rglob("*")):
             if path.is_file():
-                archive.write(path, path.relative_to(extension_dir))
+                archive_name = path.relative_to(extension_dir).as_posix()
+                archive_info = zipfile.ZipInfo(
+                    archive_name,
+                    date_time=DETERMINISTIC_ZIP_DATETIME,
+                )
+                archive_info.compress_type = zipfile.ZIP_DEFLATED
+                archive_info.create_system = 3
+                archive_info.external_attr = 0o100644 << 16
+                archive.writestr(
+                    archive_info,
+                    path.read_bytes(),
+                    compress_type=zipfile.ZIP_DEFLATED,
+                    compresslevel=9,
+                )
 
 
 def main(accept_source_update=False):
