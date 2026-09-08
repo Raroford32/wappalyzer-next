@@ -1,0 +1,46 @@
+import os
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+import pytest
+
+from wappalyzer.scanner import Wappalyzer
+
+
+pytestmark = pytest.mark.skipif(
+    os.getenv("RUN_BROWSER_TESTS") != "1",
+    reason="set RUN_BROWSER_TESTS=1 to run Chromium integration tests",
+)
+
+
+class HonoHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        body = b"<!doctype html><main>Hono integration fixture</main>"
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html")
+        self.send_header("X-Powered-By", "Hono")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, *_args):
+        return
+
+
+def test_every_warmed_browser_detects_first_navigation():
+    server = ThreadingHTTPServer(("127.0.0.1", 0), HonoHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    port = server.server_address[1]
+    urls = [f"http://127.0.0.1:{port}/{index}" for index in range(8)]
+
+    try:
+        with Wappalyzer(scan_type="full", workers=4, timeout=12) as scanner:
+            results = scanner.analyze_many(urls)
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join()
+
+    assert list(results) == urls
+    assert all("Hono" in technologies for technologies in results.values())
