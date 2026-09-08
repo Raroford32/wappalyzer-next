@@ -67,3 +67,16 @@ def test_upstream_source_hash_is_pinned_to_bundled_generation():
     lock = json.loads(lock_path.read_text(encoding="utf-8"))
 
     assert lock["source_sha256"] == update.EXPECTED_SOURCE_SHA256
+
+
+def test_automated_refresh_stages_new_source_hash_for_review(tmp_path):
+    source_path = tmp_path / "update.py"
+    source_path.write_text(
+        f'EXPECTED_SOURCE_SHA256 = "{update.EXPECTED_SOURCE_SHA256}"\n',
+        encoding="utf-8",
+    )
+    new_hash = "a" * 64
+
+    update.write_expected_source_sha256(new_hash, source_path)
+
+    assert source_path.read_text(encoding="utf-8") == (f'EXPECTED_SOURCE_SHA256 = "{new_hash}"\n')

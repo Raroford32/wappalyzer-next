@@ -19,7 +19,7 @@ jobs:
           python-version: "3.12"
           cache: pip
       - run: python -m pip install --upgrade . pytest
-      - run: python .github/update.py
+      - run: python .github/update.py --accept-source-update
       - run: pytest
       - uses: peter-evans/create-pull-request@v7
         with:
@@ -31,4 +31,5 @@ jobs:
             Automated refresh from the current Mozilla Add-ons Wappalyzer package.
 
             The fingerprint graph, Chromium extension, provenance lock, and tests
-            were validated before this pull request was created.
+            were validated before this pull request was created. Review the
+            pinned source-hash change and extension diff before merging.

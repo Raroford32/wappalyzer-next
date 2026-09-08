@@ -1,3 +1,4 @@
+import argparse
 import hashlib
 import json
 import os
@@ -19,6 +20,10 @@ EXTENSION_ARCHIVE = DATA_DIR / "wappalyzer-extension.zip"
 FINGERPRINT_LOCK = DATA_DIR / "fingerprints.lock.json"
 EXPECTED_SOURCE_SHA256 = "3a369e5580a1b4864001c021e0f5b524a7f08968b438fb7d5d7cbe887e8cee89"
 MAX_EXTENSION_UNCOMPRESSED_BYTES = 512 * 1024 * 1024
+SOURCE_HASH_DECLARATION = re.compile(
+    r'^EXPECTED_SOURCE_SHA256 = "[a-f0-9]{64}"$',
+    re.MULTILINE,
+)
 
 PROMPT_BLOCK = re.compile(
     r"^[ \t]*const current = await get(?:Cached)?Option\('version'\)\n"
@@ -61,6 +66,22 @@ def patch_index_js(content):
         raise RuntimeError("Failed to remove upgrade prompt from js/index.js")
 
     return content
+
+
+def write_expected_source_sha256(source_sha256, source_path=None):
+    source_path = Path(__file__) if source_path is None else Path(source_path)
+    content = source_path.read_text(encoding="utf-8")
+    replacement = f'EXPECTED_SOURCE_SHA256 = "{source_sha256}"'
+    content, replacements = SOURCE_HASH_DECLARATION.subn(
+        replacement,
+        content,
+        count=1,
+    )
+
+    if replacements != 1:
+        raise RuntimeError("Failed to update the pinned extension source hash")
+
+    source_path.write_text(content, encoding="utf-8")
 
 
 def patch_manifest_for_chromium(manifest):
@@ -213,7 +234,7 @@ def write_chromium_extension_archive(extension_dir, archive_path):
                 archive.write(path, path.relative_to(extension_dir))
 
 
-def main():
+def main(accept_source_update=False):
     DATA_DIR.mkdir(parents=True, exist_ok=True)
 
     with tempfile.TemporaryDirectory(prefix="wappalyzer-update-") as tempdir:
@@ -231,11 +252,14 @@ def main():
 
         source_sha256 = hashlib.sha256(archive_bytes).hexdigest()
 
-        if source_sha256 != EXPECTED_SOURCE_SHA256:
+        if source_sha256 != EXPECTED_SOURCE_SHA256 and not accept_source_update:
             raise RuntimeError(
                 "Upstream extension changed; audit the new source before "
                 f"updating EXPECTED_SOURCE_SHA256 (received {source_sha256})"
             )
+
+        if source_sha256 != EXPECTED_SOURCE_SHA256:
+            write_expected_source_sha256(source_sha256)
 
         archive_path.write_bytes(archive_bytes)
 
@@ -304,4 +328,11 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--accept-source-update",
+        action="store_true",
+        help="stage the latest source hash for a reviewable automated update",
+    )
+    arguments = parser.parse_args()
+    main(accept_source_update=arguments.accept_source_update)
