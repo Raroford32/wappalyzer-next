@@ -1,7 +1,7 @@
+import pytest
 from requests import Response
 from requests.cookies import cookiejar_from_dict
 from requests.structures import CaseInsensitiveDict
-import pytest
 
 from wappalyzer.core import analyzer, utils
 
