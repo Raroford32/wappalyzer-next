@@ -1,167 +1,422 @@
-import tldextract
 import concurrent.futures
-from bs4 import BeautifulSoup
-from urllib.parse import urlparse
+import functools
+import os
+from urllib.parse import urljoin, urlparse
 
-from wappalyzer.parsers.js import get_js
+import tldextract
+from bs4 import BeautifulSoup
+
+from wappalyzer.analyzers.dom import compile_selector, match_dom
+from wappalyzer.analyzers.js import match_js
+from wappalyzer.core.config import tech_db
+from wappalyzer.core.matcher import compile_pattern, match, match_dict, parse_pattern
+from wappalyzer.core.requester import get_response
+from wappalyzer.core.utils import create_result
+from wappalyzer.parsers.certIssuer import get_certIssuer
+from wappalyzer.parsers.css import get_css
 from wappalyzer.parsers.dns import get_dns
+from wappalyzer.parsers.js import get_js
 from wappalyzer.parsers.meta import get_meta
 from wappalyzer.parsers.robots import get_robots
 from wappalyzer.parsers.scriptSrc import get_scriptSrc
-from wappalyzer.parsers.certIssuer import get_certIssuer
-
-from wappalyzer.core.matcher import match, match_dict
-from wappalyzer.core.config import tech_db
-from wappalyzer.analyzers.dom import match_dom
-from wappalyzer.analyzers.js import match_js
-from wappalyzer.core.requester import get_response
-from wappalyzer.core.utils import create_result
 
 
-def process_scripts(base_url, js, scriptSrc):
-    def fetch_and_process(src):
-        if src.endswith('.js') or '.js?' in src:
-            js_code = get_response(src)
-            if js_code and js_code.headers.get('Content-Type', '').startswith('application/javascript'):
-                js_dict, low_dict, js_classes = get_js(js_code.text)
-                if js_dict:
-                    return {'dict': js_dict, 'low_dict': low_dict, 'classes': js_classes, 'src': src}
+PATTERN_FIELDS = {
+    "certIssuer",
+    "css",
+    "html",
+    "robots",
+    "scriptSrc",
+    "scripts",
+    "text",
+    "url",
+    "xhr",
+}
+DICT_PATTERN_FIELDS = {"cookies", "dns", "headers", "js", "meta"}
+ASSET_WORKERS = max(
+    1,
+    int(
+        os.getenv(
+            "WAPPALYZER_ASSET_WORKERS",
+            str(max(1, (os.cpu_count() or 1) * 2)),
+        )
+    )
+)
+ASSET_LIMIT = max(0, int(os.getenv("WAPPALYZER_ASSET_LIMIT", "64")))
+ASSET_DEPTH = max(0, int(os.getenv("WAPPALYZER_ASSET_DEPTH", "2")))
+ASSET_MAX_BYTES = max(
+    1,
+    int(os.getenv("WAPPALYZER_MAX_ASSET_BYTES", str(2 * 1024 * 1024))),
+)
+PROBES = {name: data["probe"] for name, data in tech_db.items() if "probe" in data}
+DETECTION_FIELDS = PATTERN_FIELDS | DICT_PATTERN_FIELDS | {"dom", "probe"}
+
+
+def build_detector_plan(database=None):
+    database = tech_db if database is None else database
+    return {
+        field: tuple(
+            (name, technology[field])
+            for name, technology in sorted(database.items())
+            if field in technology
+        )
+        for field in DETECTION_FIELDS
+    }
+
+
+DETECTOR_PLAN = build_detector_plan()
+
+
+def _compile_value(value):
+    values = value if isinstance(value, list) else [value]
+
+    for pattern in values:
+        compile_pattern(pattern)
+
+
+@functools.cache
+def prepare_matchers():
+    for technology in tech_db.values():
+        for field in PATTERN_FIELDS:
+            if field in technology:
+                _compile_value(technology[field])
+
+        for field in DICT_PATTERN_FIELDS:
+            patterns = technology.get(field, {})
+
+            if isinstance(patterns, dict):
+                for pattern in patterns.values():
+                    _compile_value(pattern)
+
+        dom = technology.get("dom")
+
+        if isinstance(dom, str):
+            compile_selector(parse_pattern(dom)[0])
+        elif isinstance(dom, list):
+            for selector in dom:
+                compile_selector(parse_pattern(selector)[0])
+        elif isinstance(dom, dict):
+            for selector, rule in dom.items():
+                compile_selector(parse_pattern(selector)[0])
+
+                if not isinstance(rule, dict):
+                    _compile_value(rule)
+                    continue
+
+                for key in ("exists", "src", "text"):
+                    if rule.get(key):
+                        _compile_value(rule[key])
+
+                for key in ("attributes", "properties"):
+                    patterns = rule.get(key, {})
+
+                    if not isinstance(patterns, dict):
+                        continue
+
+                    for pattern in patterns.values():
+                        if pattern:
+                            _compile_value(pattern)
+
+
+def _js_evidence(source):
+    js_dict, low_dict, js_classes = get_js(source)
+
+    if not js_dict and not low_dict:
         return None
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-        futures = {executor.submit(fetch_and_process, src): src for src in scriptSrc}
+    return {
+        "dict": js_dict,
+        "low_dict": low_dict,
+        "classes": js_classes,
+    }
+
+
+def _fetch_asset(url, timeout, cookie):
+    response = get_response(
+        url,
+        cookie=cookie,
+        timeout=timeout,
+        max_bytes=ASSET_MAX_BYTES,
+    )
+
+    if response is None:
+        return url, ""
+
+    return response.url, response.text
+
+
+def _fetch_assets(urls, timeout, cookie):
+    ordered_urls = list(dict.fromkeys(urls))[:ASSET_LIMIT]
+
+    if not ordered_urls:
+        return {}
+
+    responses = {}
+    worker_count = min(len(ordered_urls), ASSET_WORKERS)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=worker_count) as executor:
+        futures = {executor.submit(_fetch_asset, url, timeout, cookie): url for url in ordered_urls}
+
         for future in concurrent.futures.as_completed(futures):
-            result = future.result()
-            if result:
-                js.append({'dict': result['dict'], 'low_dict': result['low_dict'], 'classes': result['classes']})
-                js_code_response = get_response(result['src'])
-                if js_code_response:
-                    scriptSrc.extend(get_scriptSrc(base_url, js_code_response.text))
+            requested_url = futures[future]
+
+            try:
+                result_url, text = future.result()
+                responses[requested_url] = text
+                responses.setdefault(result_url, text)
+            except Exception:
+                responses[requested_url] = ""
+
+    return responses
 
 
-def analyze_from_response(response, scan_type):
-    soup = BeautifulSoup(response.text, 'html.parser')
+def _looks_like_script(url):
+    path = urlparse(url).path.casefold()
+    return path.endswith((".js", ".mjs", ".cjs"))
+
+
+def _stylesheet_urls(base_url, soup):
+    urls = []
+
+    for link in soup.find_all("link"):
+        relationship = link.get("rel", [])
+        relationship = relationship if isinstance(relationship, list) else [relationship]
+
+        if "stylesheet" in [item.casefold() for item in relationship]:
+            href = link.get("href")
+
+            if href:
+                urls.append(urljoin(base_url, href))
+
+    return urls
+
+
+def _probe_responses(base_url, timeout, cookie):
+    urls = {path: urljoin(base_url, path) for probes in PROBES.values() for path in probes}
+    responses = {}
+
+    if not urls:
+        return responses
+
+    with concurrent.futures.ThreadPoolExecutor(
+        max_workers=min(len(urls), ASSET_WORKERS)
+    ) as executor:
+        futures = {
+            executor.submit(
+                get_response,
+                url,
+                cookie,
+                timeout=timeout,
+                max_bytes=ASSET_MAX_BYTES,
+            ): path
+            for path, url in urls.items()
+        }
+
+        for future in concurrent.futures.as_completed(futures):
+            path = futures[future]
+
+            try:
+                response = future.result()
+            except Exception:
+                response = None
+
+            responses[path] = (
+                bool(response and response.ok),
+                response.text if response else "",
+            )
+
+    return responses
+
+
+def collect_evidence(response, scan_type, cookie=None, timeout=30):
+    soup = BeautifulSoup(response.text, "html.parser")
     r = tldextract.extract(response.url)
-    domain = r.domain + '.' + r.suffix
-    scheme = urlparse(response.url).scheme
-    hostname = urlparse(response.url).hostname
-    base_url = f'{scheme}://{hostname}'
-
+    parsed_url = urlparse(response.url)
+    domain = ".".join(part for part in (r.domain, r.suffix) if part)
+    base_url = f"{parsed_url.scheme}://{parsed_url.netloc}"
     js = []
-    scriptSrc = get_scriptSrc(response.url, soup)
-    for script in soup.find_all('script'):
-        if not script.get('src'):
-            js_dict, low_dict, js_classes = get_js(script.text)
-            if js_dict:
-                js.append({'dict': js_dict, 'low_dict': low_dict, 'classes': js_classes})
+    scripts = []
+    xhr_candidates = []
 
-    if scan_type != 'fast':
-        process_scripts(response.url, js, scriptSrc)
+    for script in soup.find_all("script"):
+        if not script.get("src"):
+            source = script.string or script.get_text()
+            scripts.append(source)
+            xhr_candidates.extend(get_scriptSrc(response.url, source))
+            parsed_js = _js_evidence(source)
 
-    dns = get_dns(domain) if scan_type != 'fast' else {}
+            if parsed_js:
+                js.append(parsed_js)
+
+    script_sources = get_scriptSrc(response.url, soup)
+    css_sources = get_css(soup)
+
+    if scan_type != "fast":
+        pending_scripts = list(script_sources)
+        fetched_scripts = {}
+
+        for _ in range(ASSET_DEPTH):
+            new_urls = [url for url in pending_scripts if url not in fetched_scripts][
+                : max(0, ASSET_LIMIT - len(fetched_scripts))
+            ]
+
+            if not new_urls:
+                break
+
+            batch = _fetch_assets(new_urls, timeout, cookie)
+            fetched_scripts.update((url, batch.get(url, "")) for url in new_urls)
+            pending_scripts = []
+
+            for url in new_urls:
+                source = fetched_scripts[url]
+
+                if not source:
+                    continue
+
+                scripts.append(source)
+                parsed_js = _js_evidence(source)
+
+                if parsed_js:
+                    js.append(parsed_js)
+
+                discovered = get_scriptSrc(url, source)
+                xhr_candidates.extend(discovered)
+                pending_scripts.extend(item for item in discovered if _looks_like_script(item))
+
+        script_sources = list(dict.fromkeys(script_sources + list(fetched_scripts)))
+        css_urls = _stylesheet_urls(response.url, soup)
+        css_sources.extend(_fetch_assets(css_urls, timeout, cookie).values())
+
+    dns = get_dns(domain, timeout=min(timeout, 5)) if scan_type != "fast" and domain else {}
     meta = get_meta(soup)
     cookies = response.cookies.get_dict()
-    robots = get_robots(response.url) if scan_type != 'fast' else ''
-    certIssuer = get_certIssuer(response)
+    robots = get_robots(response.url, timeout=timeout) if scan_type != "fast" else ""
+    cert_issuer = get_certIssuer(response, timeout=min(timeout, 5)) if scan_type != "fast" else ""
+    probes = _probe_responses(base_url, timeout, cookie) if scan_type != "fast" else {}
+
+    return {
+        "certIssuer": cert_issuer,
+        "cookies": cookies,
+        "css": css_sources,
+        "dns": dns,
+        "dom": soup,
+        "headers": response.headers,
+        "html": response.text,
+        "js": js,
+        "meta": meta,
+        "probes": probes,
+        "robots": robots,
+        "scriptSrc": script_sources,
+        "scripts": scripts,
+        "text": soup.get_text(" ", strip=True),
+        "url": response.url,
+        "xhr": list(dict.fromkeys(xhr_candidates)),
+    }
+
+
+def _add_candidate(result, tech_name, candidate):
+    matched, version, confidence = candidate
+
+    if not matched:
+        return
+
+    if tech_name not in result:
+        result[tech_name] = {
+            "version": version or "",
+            "confidence": confidence,
+        }
+        return
+
+    current = result[tech_name]
+    current["confidence"] = min(current["confidence"] + confidence, 100)
+
+    if version and (not current["version"] or len(version) > len(current["version"])):
+        current["version"] = version
+
+
+def analyze_from_response(response, scan_type, cookie=None, timeout=30):
+    prepare_matchers()
+    evidence = collect_evidence(
+        response,
+        scan_type,
+        cookie=cookie,
+        timeout=timeout,
+    )
 
     result = {}
 
-    def update_entry(tech_name, version, confidence):
-        if tech_name in result:
-            result[tech_name]['confidence'] = min(result[tech_name]['confidence'] + confidence, 100)
-            if version and not result[tech_name]['version']:
-                result[tech_name]['version'] = version
-        else:
-            result[tech_name] = {'version': version or '', 'confidence': confidence}
-        has_version = result[tech_name]['version'] != ''
-        return result[tech_name]['confidence'] == 100 and has_version
+    if evidence["certIssuer"]:
+        for tech_name, pattern in DETECTOR_PLAN["certIssuer"]:
+            _add_candidate(
+                result,
+                tech_name,
+                match(pattern, evidence["certIssuer"]),
+            )
 
-    for tech_name, tech_data in tech_db.items():
-        detected = False
+    for field in ("css", "html", "robots", "scriptSrc", "scripts", "text", "url", "xhr"):
+        if evidence[field]:
+            for tech_name, pattern in DETECTOR_PLAN[field]:
+                _add_candidate(
+                    result,
+                    tech_name,
+                    match(pattern, evidence[field]),
+                )
 
-        if certIssuer and 'certIssuer' in tech_data:
-            matched, version, confidence = match(tech_data['certIssuer'], certIssuer)
-            if matched and update_entry(tech_name, version, confidence):
-                detected = True
+    for tech_name, pattern in DETECTOR_PLAN["dom"]:
+        _add_candidate(
+            result,
+            tech_name,
+            match_dom(pattern, evidence["dom"]),
+        )
 
-        if not detected and 'scriptSrc' in tech_data:
-            for src in scriptSrc:
-                matched, version, confidence = match(tech_data['scriptSrc'], src)
-                if matched and update_entry(tech_name, version, confidence):
-                    if result[tech_name]['confidence'] == 100 and result[tech_name]['version']:
-                        detected = True
-                        break
+    if evidence["js"]:
+        for tech_name, pattern in DETECTOR_PLAN["js"]:
+            _add_candidate(
+                result,
+                tech_name,
+                match_js(pattern, evidence["js"]),
+            )
 
-        if not detected and 'dom' in tech_data:
-            matched, version, confidence = match_dom(tech_data['dom'], soup)
-            if matched and update_entry(tech_name, version, confidence):
-                detected = True
+    for field in ("cookies", "dns", "headers", "meta"):
+        if evidence[field]:
+            for tech_name, pattern in DETECTOR_PLAN[field]:
+                _add_candidate(
+                    result,
+                    tech_name,
+                    match_dict(
+                        pattern,
+                        evidence[field],
+                        case_insensitive_keys=field in {"headers", "meta"},
+                    ),
+                )
 
-        if not detected and 'meta' in tech_data:
-            matched, version, confidence = match_dict(tech_data['meta'], meta)
-            if matched and update_entry(tech_name, version, confidence):
-                detected = True
+    if evidence["probes"]:
+        for tech_name, probes in DETECTOR_PLAN["probe"]:
+            for path, pattern in probes.items():
+                probe_ok, probe_text = evidence["probes"].get(
+                    path,
+                    (False, ""),
+                )
 
-        if not detected and 'xhr' in tech_data:
-            for x in scriptSrc:
-                matched, version, confidence = match(tech_data['xhr'], x)
-                if matched and update_entry(tech_name, version, confidence):
-                    if result[tech_name]['confidence'] == 100 and result[tech_name]['version']:
-                        detected = True
-                        break
+                if probe_ok and (probe_text or pattern == ""):
+                    _add_candidate(
+                        result,
+                        tech_name,
+                        (True, "", 100)
+                        if pattern == "" and probe_text
+                        else match(pattern, probe_text),
+                    )
 
-        if not detected and 'html' in tech_data:
-            matched, version, confidence = match(tech_data['html'], response.text)
-            if matched and update_entry(tech_name, version, confidence):
-                detected = True
-
-        if not detected and 'js' in tech_data:
-            matched, version, confidence = match_js(tech_data['js'], js)
-            if matched and update_entry(tech_name, version, confidence):
-                detected = True
-
-        if not detected and 'cookies' in tech_data:
-            matched, version, confidence = match_dict(tech_data['cookies'], cookies)
-            if matched and update_entry(tech_name, version, confidence):
-                detected = True
-
-        if not detected and 'headers' in tech_data:
-            matched, version, confidence = match_dict(tech_data['headers'], response.headers)
-            if matched and update_entry(tech_name, version, confidence):
-                detected = True
-
-        if not detected and 'url' in tech_data:
-            matched, version, confidence = match(tech_data['url'], response.url)
-            if matched and update_entry(tech_name, version, confidence):
-                detected = True
-
-        if not detected and scan_type != 'fast' and 'dns' in tech_data:
-            matched, version, confidence = match_dict(tech_data['dns'], dns)
-            if matched and update_entry(tech_name, version, confidence):
-                detected = True
-
-        if not detected and scan_type != 'fast' and 'robots' in tech_data:
-            matched, version, confidence = match(tech_data['robots'], robots)
-            if matched and update_entry(tech_name, version, confidence):
-                detected = True
-
-    new_result = result.copy()
-    for detected in result.keys():
-        if 'implies' in tech_db[detected]:
-            implies = tech_db[detected]['implies']
-            if isinstance(implies, list):
-                for implied in implies:
-                    if implied not in new_result:
-                        new_result[implied] = {'version': '', 'confidence': 100}
-            else:
-                if implies not in new_result:
-                    new_result[implies] = {'version': '', 'confidence': 100}
-
-    return create_result(new_result)
+    return create_result(result)
 
 
-def http_scan(url, scan_type, cookie=None):
-    response = get_response(url, cookie)
+def http_scan(url, scan_type, cookie=None, timeout=30):
+    response = get_response(url, cookie, timeout=timeout)
     if response:
-        return analyze_from_response(response, scan_type)
+        return analyze_from_response(
+            response,
+            scan_type,
+            cookie=cookie,
+            timeout=timeout,
+        )
     return {}

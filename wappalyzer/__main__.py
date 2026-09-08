@@ -21,19 +21,65 @@ def positive_int(value):
     return number
 
 
+def worker_count(value):
+    if value.casefold() == "auto":
+        return None
+
+    return positive_int(value)
+
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('-i', help='import from file or enter a url', dest='input_file')
-    parser.add_argument('--scan-type', help='fast, balanced or full', dest='scan_type', default='full', type=str.lower, choices=('fast', 'balanced', 'full'))
-    parser.add_argument('-w', '--workers', help='number of concurrent workers', dest='worker_num', default=5, type=positive_int)
-    parser.add_argument('-oJ', help='json output file, or stdout when omitted or set to -', dest='json_output_file', nargs='?', const='-')
-    parser.add_argument('-oC', help='csv output file, or stdout when omitted or set to -', dest='csv_output_file', nargs='?', const='-')
-    parser.add_argument('-oH', help='html output file, or stdout when omitted or set to -', dest='html_output_file', nargs='?', const='-')
-    parser.add_argument('-c', '--cookie', help='cookie string', dest='cookie')
-    parser.add_argument('-t', '--timeout', help='maximum seconds to wait for a page load in full scans', dest='timeout', default=30, type=positive_int)
+    parser.add_argument("-i", help="import from file or enter a url", dest="input_file")
+    parser.add_argument(
+        "--scan-type",
+        help="fast, balanced or full",
+        dest="scan_type",
+        default="full",
+        type=str.lower,
+        choices=("fast", "balanced", "full"),
+    )
+    parser.add_argument(
+        "-w",
+        "--workers",
+        help="number of concurrent workers, or auto (default)",
+        dest="worker_num",
+        default=None,
+        type=worker_count,
+    )
+    parser.add_argument(
+        "-oJ",
+        help="json output file, or stdout when omitted or set to -",
+        dest="json_output_file",
+        nargs="?",
+        const="-",
+    )
+    parser.add_argument(
+        "-oC",
+        help="csv output file, or stdout when omitted or set to -",
+        dest="csv_output_file",
+        nargs="?",
+        const="-",
+    )
+    parser.add_argument(
+        "-oH",
+        help="html output file, or stdout when omitted or set to -",
+        dest="html_output_file",
+        nargs="?",
+        const="-",
+    )
+    parser.add_argument("-c", "--cookie", help="cookie string", dest="cookie")
+    parser.add_argument(
+        "-t",
+        "--timeout",
+        help="maximum seconds to wait for a page load in full scans",
+        dest="timeout",
+        default=30,
+        type=positive_int,
+    )
     args = parser.parse_args()
 
-    print('\n\t' + bold(green('wappalyzer')) + '\n', file=sys.stderr)
+    print("\n\t" + bold(green("wappalyzer")) + "\n", file=sys.stderr)
 
     if not args.input_file:
         parser.print_help(file=sys.stderr)
@@ -42,7 +88,9 @@ def main():
     def has_file_output():
         return bool(args.json_output_file or args.csv_output_file or args.html_output_file)
 
-    def process_urls(urls, num_workers=3, cookie=None, scan_type='full', should_print=False, timeout=30):
+    def process_urls(
+        urls, num_workers=None, cookie=None, scan_type="full", should_print=False, timeout=30
+    ):
         urls = [url for url in urls if url]
 
         if not urls:
@@ -54,13 +102,13 @@ def main():
 
         def clear_status_line():
             if status_enabled:
-                print('\r\033[K', end='', file=sys.stderr, flush=True)
+                print("\r\033[K", end="", file=sys.stderr, flush=True)
 
         def print_status():
             if status_enabled:
                 print(
-                    f'\r\033[KProcessed {processed_count}/{len(urls)} URLs',
-                    end='',
+                    f"\r\033[KProcessed {processed_count}/{len(urls)} URLs",
+                    end="",
                     file=sys.stderr,
                     flush=True,
                 )
@@ -103,18 +151,18 @@ def main():
             print(f"Error in process_urls: {str(e)}", file=sys.stderr)
         finally:
             if status_enabled:
-                sys.stderr.write('\n')
+                sys.stderr.write("\n")
                 sys.stderr.flush()
 
         return results
 
     try:
-        if re.search(r'^https?://', args.input_file.lower()):
+        if re.search(r"^https?://", args.input_file.lower()):
             should_print = not has_file_output()
             result = analyze(
                 args.input_file,
                 args.scan_type,
-                1,
+                args.worker_num,
                 args.cookie,
                 args.timeout,
             )
@@ -122,7 +170,7 @@ def main():
                 pretty_print(result)
         else:
             try:
-                with open(args.input_file, 'r') as urls_file:
+                with open(args.input_file, "r") as urls_file:
                     urls = urls_file.read().splitlines()
 
                 should_print = not has_file_output()
@@ -135,12 +183,12 @@ def main():
                     timeout=args.timeout,
                 )
             except FileNotFoundError:
-                if tldextract.extract('http://' + args.input_file).domain != '':
+                if tldextract.extract("http://" + args.input_file).domain != "":
                     should_print = not has_file_output()
                     result = analyze(
-                        'http://' + args.input_file,
+                        "http://" + args.input_file,
                         args.scan_type,
-                        1,
+                        args.worker_num,
                         args.cookie,
                         args.timeout,
                     )
@@ -156,14 +204,14 @@ def main():
     except KeyboardInterrupt:
         print("\nProgram interrupted by user. Saving partial results...", file=sys.stderr)
 
-    if 'result' in locals():
+    if "result" in locals():
         if args.json_output_file:
-            write_to_file(args.json_output_file, result, format='json')
+            write_to_file(args.json_output_file, result, format="json")
         elif args.csv_output_file:
-            write_to_file(args.csv_output_file, result, format='csv')
+            write_to_file(args.csv_output_file, result, format="csv")
         elif args.html_output_file:
-            write_to_file(args.html_output_file, result, format='html')
+            write_to_file(args.html_output_file, result, format="html")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

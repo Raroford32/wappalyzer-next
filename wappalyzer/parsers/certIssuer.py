@@ -1,15 +1,34 @@
+import socket
 import ssl
+from urllib.parse import urlparse
 
-def get_certIssuer(response):
-    #  TODO: This doesn't work right now
+
+def get_certIssuer(response, timeout=5):
+    parsed = urlparse(response.url)
+
+    if parsed.scheme != "https" or not parsed.hostname:
+        return ""
+
+    port = parsed.port or 443
+
     try:
-        cert_info_raw = response.raw.connection.sock.getpeercert(True)
-        pem_cert = ssl.DER_cert_to_PEM_cert(cert_info_raw)
-        cert_info = response.raw.connection.sock.getpeercert()
-        if 'issuer' in cert_info:
-            for array in cert_info['issuer']:
-                if 'organizationName' in array[0]:
-                    return array[1]
-    except Exception as e:
-        pass
-    return ''
+        context = ssl.create_default_context()
+
+        with socket.create_connection(
+            (parsed.hostname, port),
+            timeout=timeout,
+        ) as connection:
+            with context.wrap_socket(
+                connection,
+                server_hostname=parsed.hostname,
+            ) as tls_connection:
+                certificate = tls_connection.getpeercert()
+
+        for attributes in certificate.get("issuer", ()):
+            for name, value in attributes:
+                if name in {"organizationName", "commonName"}:
+                    return value
+    except (OSError, ssl.SSLError, ValueError):
+        return ""
+
+    return ""

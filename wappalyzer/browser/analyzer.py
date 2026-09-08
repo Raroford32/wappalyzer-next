@@ -13,6 +13,7 @@ from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from playwright.async_api import async_playwright
 
 from wappalyzer.core.config import extension_path
+from wappalyzer.core.requester import VERIFY_TLS
 from wappalyzer.core.utils import create_result
 
 
@@ -333,8 +334,7 @@ def _detection_signature(detections):
 
 def _activity_signature(activity):
     return ":".join(
-        str(activity.get(key, ""))
-        for key in ("readyState", "relevantCount", "mutationCount")
+        str(activity.get(key, "")) for key in ("readyState", "relevantCount", "mutationCount")
     )
 
 
@@ -343,19 +343,13 @@ def _page_quiet(activity, quiet_ms=1000):
         return True
 
     recent_resource = (
-        activity.get("lastRelevantAge") is not None
-        and activity["lastRelevantAge"] < quiet_ms
+        activity.get("lastRelevantAge") is not None and activity["lastRelevantAge"] < quiet_ms
     )
     recent_mutation = (
-        activity.get("lastMutationAge") is not None
-        and activity["lastMutationAge"] < quiet_ms
+        activity.get("lastMutationAge") is not None and activity["lastMutationAge"] < quiet_ms
     )
 
-    return (
-        activity.get("readyState") == "complete"
-        and not recent_resource
-        and not recent_mutation
-    )
+    return activity.get("readyState") == "complete" and not recent_resource and not recent_mutation
 
 
 class BrowserDriver:
@@ -378,11 +372,13 @@ class BrowserDriver:
         cookies = []
 
         for cookie in self.pending_cookies:
-            cookies.append({
-                "name": cookie["name"],
-                "value": cookie["value"],
-                "url": url,
-            })
+            cookies.append(
+                {
+                    "name": cookie["name"],
+                    "value": cookie["value"],
+                    "url": url,
+                }
+            )
 
         self.pending_cookies = []
         await self.context.add_cookies(cookies)
@@ -393,10 +389,25 @@ class BrowserDriver:
         except Exception:
             pass
 
-        try:
-            await self.page.evaluate("() => { localStorage.clear(); sessionStorage.clear(); }")
-        except Exception:
-            pass
+        for worker in tuple(self.context.service_workers):
+            if worker.url.startswith("chrome-extension://"):
+                continue
+
+            try:
+                await worker.evaluate("() => self.registration && self.registration.unregister()")
+            except Exception:
+                pass
+
+        for page in tuple(self.context.pages):
+            if page is self.popup or page.is_closed():
+                continue
+
+            try:
+                await page.close()
+            except Exception:
+                pass
+
+        self.page = None
 
     async def close(self):
         try:
@@ -432,18 +443,21 @@ class DriverPool:
         if self.queue.empty():
             raise RuntimeError("Failed to initialize Chromium browser contexts")
 
+        self.size = len(self.drivers)
+
     async def grow_to(self, size):
         if self.closed or size <= self.size:
             return
 
-        additional = size - self.size
-        self.size = size
+        additional = size - len(self.drivers)
         for _ in range(additional):
             driver = await self._create_driver()
 
             if driver:
                 self.drivers.append(driver)
                 await self.queue.put(driver)
+
+        self.size = len(self.drivers)
 
     async def _create_driver(self):
         for attempt in range(self.max_retries):
@@ -459,7 +473,7 @@ class DriverPool:
                     user_agent=USER_AGENT,
                     timezone_id="UTC",
                     reduced_motion="reduce",
-                    ignore_https_errors=True,
+                    ignore_https_errors=not VERIFY_TLS,
                     args=[
                         f"--disable-extensions-except={self.extension_dir}",
                         f"--load-extension={self.extension_dir}",
@@ -498,7 +512,20 @@ class DriverPool:
                 pages = context.pages
                 page = pages[0] if pages else await context.new_page()
 
-                return BrowserDriver(context, page, user_data_dir, extension_id, timeout_ms)
+                driver = BrowserDriver(
+                    context,
+                    page,
+                    user_data_dir,
+                    extension_id,
+                    timeout_ms,
+                )
+                await _ensure_popup(driver)
+
+                if page is not driver.popup and not page.is_closed():
+                    await page.close()
+
+                driver.page = None
+                return driver
             except Exception as e:
                 if context:
                     try:
@@ -523,7 +550,14 @@ class DriverPool:
 
     @asynccontextmanager
     async def get_driver(self):
-        driver = await self.queue.get()
+        try:
+            driver = await asyncio.wait_for(
+                self.queue.get(),
+                timeout=self.timeout,
+            )
+        except asyncio.TimeoutError as error:
+            raise RuntimeError("No healthy browser driver is available") from error
+
         reusable = True
 
         try:
@@ -531,6 +565,15 @@ class DriverPool:
         except Exception:
             reusable = False
             await driver.close()
+            if driver in self.drivers:
+                self.drivers.remove(driver)
+
+            replacement = await self._create_driver()
+
+            if replacement:
+                self.drivers.append(replacement)
+                await self.queue.put(replacement)
+
             raise
         finally:
             if reusable:
@@ -603,7 +646,7 @@ async def _get_detections(driver, target_url):
     stable_polls = 0
     started_at = asyncio.get_running_loop().time()
     min_wait = 2.0
-    hard_max = min(10.0, max(1.0, driver.timeout_ms / 1000 - 1))
+    hard_max = max(1.0, driver.timeout_ms / 1000 - 1)
 
     while True:
         response = await popup.evaluate(GET_DETECTIONS_FOR_TAB_SCRIPT, selected_tab)
@@ -617,10 +660,7 @@ async def _get_detections(driver, target_url):
         activity = await _page_activity(driver.page)
         activity_signature = _activity_signature(activity)
 
-        if (
-            signature == last_signature
-            and activity_signature == last_activity_signature
-        ):
+        if signature == last_signature and activity_signature == last_activity_signature:
             stable_polls += 1
         else:
             stable_polls = 0
@@ -642,28 +682,65 @@ async def _get_detections(driver, target_url):
     return detections
 
 
+async def _clear_target_state(driver, page):
+    try:
+        await page.evaluate("() => { localStorage.clear(); sessionStorage.clear(); }")
+    except Exception:
+        pass
+
+    try:
+        origin = await page.evaluate("() => location.origin")
+        session = await driver.context.new_cdp_session(page)
+
+        try:
+            await session.send("Network.clearBrowserCache")
+
+            if origin and origin != "null":
+                await session.send(
+                    "Storage.clearDataForOrigin",
+                    {
+                        "origin": origin,
+                        "storageTypes": "all",
+                    },
+                )
+        finally:
+            await session.detach()
+    except Exception:
+        pass
+
+
 async def process_url(driver, url):
+    page = await driver.context.new_page()
+    driver.page = page
+
     try:
         await driver.apply_pending_cookies(url)
 
         try:
-            await driver.page.goto(
+            await page.goto(
                 url,
                 wait_until="load",
                 timeout=driver.timeout_ms,
             )
         except PlaywrightTimeoutError:
             try:
-                await driver.page.evaluate("() => window.stop()")
+                await page.evaluate("() => window.stop()")
             except Exception:
                 pass
 
-        await _stimulate_page(driver.page)
+        await _stimulate_page(page)
 
-        return url, await _get_detections(driver, driver.page.url)
-    except Exception:
-        print(f"Error processing: {url}", file=sys.stderr)
-        return url, []
+        return url, await _get_detections(driver, page.url)
+    finally:
+        await _clear_target_state(driver, page)
+
+        try:
+            await page.close()
+        except Exception:
+            pass
+
+        if driver.page is page:
+            driver.page = None
 
 
 def cookie_to_cookies(cookie):
@@ -672,10 +749,12 @@ def cookie_to_cookies(cookie):
     cookies = []
 
     for key, value in cookie_dict.items():
-        cookies.append({
-            "name": key,
-            "value": value.value,
-        })
+        cookies.append(
+            {
+                "name": key,
+                "value": value.value,
+            }
+        )
 
     return cookies
 

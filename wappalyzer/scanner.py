@@ -1,6 +1,8 @@
 import asyncio
 import concurrent.futures
+import os
 import threading
+from pathlib import Path
 
 from wappalyzer.browser.analyzer import (
     DriverPool,
@@ -9,6 +11,75 @@ from wappalyzer.browser.analyzer import (
     process_url,
 )
 from wappalyzer.core.analyzer import http_scan
+
+
+def _available_memory_bytes():
+    cgroup_limit = Path("/sys/fs/cgroup/memory.max")
+    cgroup_usage = Path("/sys/fs/cgroup/memory.current")
+
+    try:
+        value = cgroup_limit.read_text(encoding="utf-8").strip()
+
+        if value != "max":
+            limit = int(value)
+            usage = int(cgroup_usage.read_text(encoding="utf-8").strip())
+            return max(0, limit - usage)
+    except (OSError, ValueError):
+        pass
+
+    try:
+        return os.sysconf("SC_AVPHYS_PAGES") * os.sysconf("SC_PAGE_SIZE")
+    except (OSError, ValueError):
+        return 0
+
+
+def _available_cpu_count():
+    counts = []
+
+    try:
+        counts.append(len(os.sched_getaffinity(0)))
+    except AttributeError:
+        pass
+
+    try:
+        quota, period = Path("/sys/fs/cgroup/cpu.max").read_text(encoding="utf-8").split()
+
+        if quota != "max":
+            quota_value = int(quota)
+            period_value = int(period)
+            counts.append(max(1, (quota_value + period_value - 1) // period_value))
+    except (OSError, ValueError):
+        pass
+
+    counts.append(max(1, os.cpu_count() or 1))
+    return min(counts)
+
+
+def automatic_worker_count(scan_type):
+    override = os.getenv("WAPPALYZER_WORKERS")
+
+    if override:
+        return max(1, int(override))
+
+    cpu_count = _available_cpu_count()
+
+    if scan_type != "full":
+        return cpu_count
+
+    available_memory = _available_memory_bytes()
+    memory_bound = (
+        max(1, available_memory // (512 * 1024 * 1024)) if available_memory else cpu_count * 2
+    )
+    return max(1, min(cpu_count * 2, memory_bound))
+
+
+def _http_scan_job(url, scan_type, cookie, timeout):
+    return url, http_scan(
+        url,
+        scan_type,
+        cookie=cookie,
+        timeout=timeout,
+    )
 
 
 class _LoopRunner:
@@ -36,8 +107,6 @@ class _LoopRunner:
 
 
 class _FullScanBackend:
-    MAX_BROWSER_WORKERS = 3
-
     def __init__(self, workers=1, timeout=30):
         self.workers = workers
         self.timeout = timeout
@@ -48,7 +117,7 @@ class _FullScanBackend:
         if self.pool:
             if size > self.pool_size:
                 await self.pool.grow_to(size)
-                self.pool_size = size
+                self.pool_size = self.pool.size
 
             return
 
@@ -61,7 +130,7 @@ class _FullScanBackend:
             raise
 
         self.pool = pool
-        self.pool_size = size
+        self.pool_size = pool.size
 
     async def analyze_url(self, url, cookie=None):
         await self.ensure_pool(1)
@@ -81,19 +150,21 @@ class _FullScanBackend:
         if not urls:
             return {}
 
-        worker_count = min(self.workers, self.MAX_BROWSER_WORKERS, len(urls))
+        worker_count = min(self.workers, len(urls))
         await self.ensure_pool(worker_count)
+        worker_count = min(worker_count, len(self.pool.drivers))
 
         queue = asyncio.Queue()
-        results = {}
+        indexed_results = {}
+        indexed_errors = {}
 
-        for url in urls:
-            queue.put_nowait(url)
+        for index, url in enumerate(urls):
+            queue.put_nowait((index, url))
 
         async def worker():
             while True:
                 try:
-                    url = queue.get_nowait()
+                    index, url = queue.get_nowait()
                 except asyncio.QueueEmpty:
                     break
 
@@ -106,20 +177,14 @@ class _FullScanBackend:
                 except Exception as exc:
                     error = exc
 
-                results[result_url] = technologies
+                indexed_results[index] = (result_url, technologies)
 
-                if error and on_error:
-                    on_error(result_url, error)
-
-                if on_result:
-                    on_result(result_url, technologies)
+                if error:
+                    indexed_errors[index] = error
 
                 queue.task_done()
 
-        workers = [
-            asyncio.create_task(worker())
-            for _ in range(worker_count)
-        ]
+        workers = [asyncio.create_task(worker()) for _ in range(worker_count)]
 
         try:
             await asyncio.gather(*workers)
@@ -128,6 +193,22 @@ class _FullScanBackend:
                 worker_task.cancel()
 
             raise
+
+        results = {}
+
+        for index in range(len(urls)):
+            _result_url, technologies = indexed_results.get(
+                index,
+                (urls[index], {}),
+            )
+            input_url = urls[index]
+            results[input_url] = technologies
+
+            if index in indexed_errors and on_error:
+                on_error(input_url, indexed_errors[index])
+
+            if on_result:
+                on_result(input_url, technologies)
 
         return results
 
@@ -141,7 +222,7 @@ class _FullScanBackend:
 class Wappalyzer:
     SUPPORTED_SCAN_TYPES = {"fast", "balanced", "full"}
 
-    def __init__(self, scan_type="full", workers=1, cookie=None, timeout=30):
+    def __init__(self, scan_type="full", workers=None, cookie=None, timeout=30):
         scan_type = scan_type.lower()
 
         if scan_type not in self.SUPPORTED_SCAN_TYPES:
@@ -149,6 +230,9 @@ class Wappalyzer:
                 f"Unsupported scan_type {scan_type!r}. "
                 f"Expected one of: {', '.join(sorted(self.SUPPORTED_SCAN_TYPES))}"
             )
+
+        if workers is None:
+            workers = automatic_worker_count(scan_type)
 
         if workers < 1:
             raise ValueError("workers must be at least 1")
@@ -163,6 +247,8 @@ class Wappalyzer:
         self._closed = False
         self._runner = None
         self._full_backend = None
+        self._http_executor = None
+        self._http_pool_size = 0
         self._lock = threading.RLock()
 
     def __enter__(self):
@@ -180,8 +266,11 @@ class Wappalyzer:
             self._closed = True
             runner = self._runner
             backend = self._full_backend
+            http_executor = self._http_executor
             self._runner = None
             self._full_backend = None
+            self._http_executor = None
+            self._http_pool_size = 0
 
         if runner and backend:
             try:
@@ -190,6 +279,9 @@ class Wappalyzer:
                 runner.close()
         elif runner:
             runner.close()
+
+        if http_executor:
+            http_executor.shutdown(wait=True, cancel_futures=True)
 
     def analyze(self, url, cookie=None):
         result_url, technologies = self._analyze_url(url, cookie)
@@ -246,43 +338,77 @@ class Wappalyzer:
         cookie = self._effective_cookie(cookie)
 
         if self.scan_type == "full":
-            return self._full_runner().run(
-                self._full_backend.analyze_url(url, cookie=cookie)
-            )
+            return self._full_runner().run(self._full_backend.analyze_url(url, cookie=cookie))
 
-        return url, http_scan(url, self.scan_type, cookie)
+        return url, http_scan(
+            url,
+            self.scan_type,
+            cookie,
+            timeout=self.timeout,
+        )
 
     def _analyze_many_http(self, urls, cookie=None, on_result=None, on_error=None):
         worker_count = min(self.workers, len(urls))
-        results = {}
+        indexed_results = {}
+        indexed_errors = {}
 
-        def scan(url):
-            return url, http_scan(url, self.scan_type, cookie)
+        if worker_count == 1:
+            for index, url in enumerate(urls):
+                try:
+                    indexed_results[index] = _http_scan_job(
+                        url,
+                        self.scan_type,
+                        cookie,
+                        self.timeout,
+                    )
+                except Exception as exc:
+                    indexed_results[index] = (url, {})
+                    indexed_errors[index] = exc
+        else:
+            with self._lock:
+                if self._http_executor and worker_count > self._http_pool_size:
+                    self._http_executor.shutdown(wait=True, cancel_futures=True)
+                    self._http_executor = None
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=worker_count) as executor:
-            future_to_url = {
-                executor.submit(scan, url): url
-                for url in urls
+                if not self._http_executor:
+                    self._http_executor = concurrent.futures.ProcessPoolExecutor(
+                        max_workers=worker_count,
+                    )
+                    self._http_pool_size = worker_count
+
+                executor = self._http_executor
+
+            future_to_item = {
+                executor.submit(
+                    _http_scan_job,
+                    url,
+                    self.scan_type,
+                    cookie,
+                    self.timeout,
+                ): (index, url)
+                for index, url in enumerate(urls)
             }
 
-            for future in concurrent.futures.as_completed(future_to_url):
-                url = future_to_url[future]
-                result_url = url
-                technologies = {}
-                error = None
+            for future in concurrent.futures.as_completed(future_to_item):
+                index, url = future_to_item[future]
 
                 try:
-                    result_url, technologies = future.result()
+                    indexed_results[index] = future.result()
                 except Exception as exc:
-                    error = exc
+                    indexed_results[index] = (url, {})
+                    indexed_errors[index] = exc
 
-                results[result_url] = technologies
+        results = {}
 
-                if error and on_error:
-                    on_error(result_url, error)
+        for index, url in enumerate(urls):
+            _result_url, technologies = indexed_results[index]
+            results[url] = technologies
 
-                if on_result:
-                    on_result(result_url, technologies)
+            if index in indexed_errors and on_error:
+                on_error(url, indexed_errors[index])
+
+            if on_result:
+                on_result(url, technologies)
 
         return results
 
@@ -290,7 +416,7 @@ class Wappalyzer:
 Scanner = Wappalyzer
 
 
-def analyze(url, scan_type="full", workers=1, cookie=None, timeout=30):
+def analyze(url, scan_type="full", workers=None, cookie=None, timeout=30):
     with Wappalyzer(
         scan_type=scan_type,
         workers=workers,
