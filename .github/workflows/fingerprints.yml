@@ -1,0 +1,34 @@
+name: refresh fingerprints
+
+on:
+  schedule:
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install --upgrade . pytest
+      - run: python .github/update.py
+      - run: pytest
+      - uses: peter-evans/create-pull-request@v7
+        with:
+          branch: automated/wappalyzer-fingerprints
+          delete-branch: true
+          commit-message: "data: refresh Wappalyzer fingerprints"
+          title: "data: refresh Wappalyzer fingerprints"
+          body: |
+            Automated refresh from the current Mozilla Add-ons Wappalyzer package.
+
+            The fingerprint graph, Chromium extension, provenance lock, and tests
+            were validated before this pull request was created.

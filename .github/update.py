@@ -1,4 +1,6 @@
+import hashlib
 import json
+import os
 import re
 import shutil
 import tempfile
@@ -7,10 +9,14 @@ import zipfile
 from pathlib import Path
 
 
-URL = "https://addons.mozilla.org/firefox/downloads/latest/wappalyzer/platform:2/wappalyzer.xpi"
+DEFAULT_URL = (
+    "https://addons.mozilla.org/firefox/downloads/latest/wappalyzer/platform:2/wappalyzer.xpi"
+)
+URL = os.getenv("WAPPALYZER_EXTENSION_URL", DEFAULT_URL)
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = REPO_ROOT / "wappalyzer" / "data"
 EXTENSION_ARCHIVE = DATA_DIR / "wappalyzer-extension.zip"
+FINGERPRINT_LOCK = DATA_DIR / "fingerprints.lock.json"
 
 PROMPT_BLOCK = re.compile(
     r"^[ \t]*const current = await get(?:Cached)?Option\('version'\)\n"
@@ -100,13 +106,60 @@ def validate_extension_tree(extension_dir, require_technologies=False):
     validate_manifest(json.loads((extension_dir / "manifest.json").read_text(encoding="utf-8")))
 
 
+def safe_extract(archive, destination):
+    destination = destination.resolve()
+
+    for member in archive.infolist():
+        target = (destination / member.filename).resolve()
+
+        if destination not in target.parents and target != destination:
+            raise RuntimeError(f"Unsafe archive path: {member.filename}")
+
+    archive.extractall(destination)
+
+
+def relationship_names(value):
+    values = value if isinstance(value, list) else [value]
+    return [item.split(r"\;", 1)[0] for item in values]
+
+
+def validate_fingerprints(technologies, categories, groups):
+    errors = []
+
+    for name, technology in technologies.items():
+        for category in technology.get("cats", []):
+            if str(category) not in categories:
+                errors.append(f"{name}: unknown category {category}")
+
+        for field in ("implies", "requires", "excludes"):
+            for related_name in relationship_names(technology.get(field, [])):
+                if related_name and related_name not in technologies:
+                    errors.append(f"{name}: {field} references unknown technology {related_name}")
+
+        required_categories = technology.get("requiresCategory", [])
+        required_categories = (
+            required_categories if isinstance(required_categories, list) else [required_categories]
+        )
+
+        for category in required_categories:
+            if str(category) not in categories:
+                errors.append(f"{name}: requires unknown category {category}")
+
+    for category_id, category in categories.items():
+        for group in category.get("groups", []):
+            if str(group) not in groups:
+                errors.append(f"category {category_id}: unknown group {group}")
+
+    if errors:
+        preview = "; ".join(errors[:20])
+        raise RuntimeError(f"Invalid fingerprint graph ({len(errors)} errors): {preview}")
+
+
 def write_chromium_extension_archive(extension_dir, archive_path):
     manifest_path = extension_dir / "manifest.json"
     manifest_path.write_text(
         json.dumps(
-            patch_manifest_for_chromium(
-                json.loads(manifest_path.read_text(encoding="utf-8"))
-            ),
+            patch_manifest_for_chromium(json.loads(manifest_path.read_text(encoding="utf-8"))),
             separators=(",", ":"),
         ),
         encoding="utf-8",
@@ -119,33 +172,71 @@ def write_chromium_extension_archive(extension_dir, archive_path):
                 archive.write(path, path.relative_to(extension_dir))
 
 
-DATA_DIR.mkdir(parents=True, exist_ok=True)
+def main():
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
 
-with tempfile.TemporaryDirectory(prefix="wappalyzer-update-") as tempdir:
-    tempdir = Path(tempdir)
-    archive_path = tempdir / "wappalyzer.xpi"
-    extract_dir = tempdir / "wappalyzer"
+    with tempfile.TemporaryDirectory(prefix="wappalyzer-update-") as tempdir:
+        tempdir = Path(tempdir)
+        archive_path = tempdir / "wappalyzer.xpi"
+        extract_dir = tempdir / "wappalyzer"
 
-    urllib.request.urlretrieve(URL, archive_path)
+        request = urllib.request.Request(
+            URL,
+            headers={"User-Agent": "wappalyzer-next fingerprint updater"},
+        )
 
-    with zipfile.ZipFile(archive_path) as archive:
-        archive.extractall(extract_dir)
+        with urllib.request.urlopen(request, timeout=60) as response:
+            archive_bytes = response.read()
 
-    index_path = extract_dir / "js" / "index.js"
-    index_path.write_text(
-        patch_index_js(index_path.read_text(encoding="utf-8")),
-        encoding="utf-8",
-    )
+        archive_path.write_bytes(archive_bytes)
 
-    technologies = {}
-    for path in sorted((extract_dir / "technologies").glob("*.json")):
-        technologies.update(json.loads(path.read_text(encoding="utf-8")))
+        with zipfile.ZipFile(archive_path) as archive:
+            safe_extract(archive, extract_dir)
 
-    (DATA_DIR / "technologies.json").write_text(
-        json.dumps(technologies, indent=4) + "\n",
-        encoding="utf-8",
-    )
-    shutil.copy2(extract_dir / "groups.json", DATA_DIR / "groups.json")
-    shutil.copy2(extract_dir / "categories.json", DATA_DIR / "categories.json")
+        index_path = extract_dir / "js" / "index.js"
+        index_path.write_text(
+            patch_index_js(index_path.read_text(encoding="utf-8")),
+            encoding="utf-8",
+        )
 
-    write_chromium_extension_archive(extract_dir, EXTENSION_ARCHIVE)
+        technologies = {}
+        for path in sorted((extract_dir / "technologies").glob("*.json")):
+            technologies.update(json.loads(path.read_text(encoding="utf-8")))
+
+        categories = json.loads(
+            (extract_dir / "categories.json").read_text(encoding="utf-8")
+        )
+        groups = json.loads(
+            (extract_dir / "groups.json").read_text(encoding="utf-8")
+        )
+        validate_fingerprints(technologies, categories, groups)
+
+        (DATA_DIR / "technologies.json").write_text(
+            json.dumps(technologies, indent=4) + "\n",
+            encoding="utf-8",
+        )
+        shutil.copy2(extract_dir / "groups.json", DATA_DIR / "groups.json")
+        shutil.copy2(extract_dir / "categories.json", DATA_DIR / "categories.json")
+
+        write_chromium_extension_archive(extract_dir, EXTENSION_ARCHIVE)
+        manifest = json.loads(
+            (extract_dir / "manifest.json").read_text(encoding="utf-8")
+        )
+        FINGERPRINT_LOCK.write_text(
+            json.dumps(
+                {
+                    "source": URL,
+                    "source_sha256": hashlib.sha256(archive_bytes).hexdigest(),
+                    "extension_version": manifest.get("version"),
+                    "technology_count": len(technologies),
+                },
+                indent=2,
+                sort_keys=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+
+if __name__ == "__main__":
+    main()

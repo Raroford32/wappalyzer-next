@@ -68,7 +68,7 @@ docker compose run --rm wappalyzer -i urls.txt -w 3 -oJ output.json
 Some common usage examples are given below, refer to list of all options for more information.
 
 - Scan a single URL: `wappalyzer -i https://example.com`
-- Scan multiple URLs from a file: `wappalyzer -i urls.txt -w 3`
+- Scan multiple URLs from a file: `wappalyzer -i urls.txt -w auto`
 - Set page-load timeout for full scans: `wappalyzer -i urls.txt -t 15`
 - Scan with authentication: `wappalyzer -i https://example.com -c "sessionid=abc123; token=xyz789"`
 - Export results to JSON: `wappalyzer -i https://example.com -oJ results.json`
@@ -85,7 +85,7 @@ When an output flag is used without a file, the report is written to stdout. Sta
   - `fast`: Quick HTTP-based scan (sends 1 request)
   - `balanced`: HTTP-based scan with more requests
   - `full`: Complete scan using wappalyzer extension
-- `-w, --workers`: Number of concurrent workers (default: 5; full scans are capped at 3)
+- `-w, --workers`: Number of concurrent workers, or `auto` (default)
 - `-t, --timeout`: Maximum seconds to wait for a page load in full scans (default: 30)
 - `-oJ [file]`: JSON output file path, or stdout when the file is omitted or set to `-`
 - `-oC [file]`: CSV output file path, or stdout when the file is omitted or set to `-`
@@ -98,12 +98,15 @@ The python library is available on pypi as `wappalyzer` and can be imported with
 
 #### Using the Library
 
-Use `Wappalyzer` when scanning more than one URL. The browser is started once, reused, and closed when the `with` block exits.
+Use `Wappalyzer` when scanning more than one URL. Worker processes or browsers are
+started once, reused, and closed when the `with` block exits. Automatic worker
+sizing uses the available CPU allocation for HTTP scans and both CPU and memory
+budgets for full scans.
 
 ```python
 from wappalyzer import Wappalyzer
 
-with Wappalyzer(workers=3, timeout=30) as scanner:
+with Wappalyzer(workers=None, timeout=30) as scanner:
     results = scanner.analyze_many([
         'https://example.com',
         'https://github.com',
@@ -149,7 +152,8 @@ Do not call the top-level `analyze()` function in a loop for large jobs. Use `Wa
   - `'fast'`: Quick HTTP-based scan
   - `'balanced'`: HTTP-based scan with more requests
   - `'full'`: Complete scan including JavaScript execution (default)
-- `workers` (int, optional): Number of browser workers to create for full scans (default: 1)
+- `workers` (int or `None`, optional): Worker count. `None` selects a
+  resource-aware value (default).
 - `cookie` (str, optional): Cookie header string for authenticated scans
 - `timeout` (int, optional): Maximum seconds to wait for a page load in full scans (default: 30)
 
@@ -184,5 +188,32 @@ The full scanner runs the Wappalyzer extension in Chromium through Playwright. C
 
 #### What is the difference between 'fast', 'balanced', and 'full' scan types?
 - **fast**: Sends a single HTTP request to the URL. Doesn't use the extension.
-- **balanced**: Sends additional HTTP requests to .js files, /robots.txt and does DNS queries. Doesn't use the extension.
+- **balanced**: Adds bounded script, stylesheet, probe, certificate, robots.txt,
+  and DNS evidence. Doesn't execute JavaScript.
 - **full**: Uses the official Wappalyzer extension to scan the URL in a headless browser.
+
+### Performance and isolation
+
+- HTTP jobs are sharded across reusable worker processes so CPU-bound matching
+  can use all allocated cores.
+- Fingerprint regular expressions and CSS selectors are compiled once per
+  process.
+- HTTP connections are pooled, TLS verification is enabled, response sizes are
+  bounded, and every network operation has a deadline.
+- Full-scan browser workers pass an extension-readiness barrier before receiving
+  work. Each URL gets a fresh page and its origin storage is cleared afterward.
+- Results and callbacks are emitted in input order.
+
+The following environment variables tune resource policy without code changes:
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `WAPPALYZER_WORKERS` | resource-aware | Override automatic top-level workers |
+| `WAPPALYZER_ASSET_WORKERS` | based on CPU | Concurrent assets per HTTP process |
+| `WAPPALYZER_ASSET_LIMIT` | `64` | Maximum assets fetched per URL |
+| `WAPPALYZER_ASSET_DEPTH` | `2` | Script discovery depth |
+| `WAPPALYZER_MAX_ASSET_BYTES` | `2097152` | Maximum script, CSS, or probe body |
+| `WAPPALYZER_CONNECT_TIMEOUT` | `5` | HTTP connect timeout in seconds |
+| `WAPPALYZER_READ_TIMEOUT` | `30` | HTTP read timeout in seconds |
+| `WAPPALYZER_MAX_RESPONSE_BYTES` | `10485760` | Maximum response body size |
+| `WAPPALYZER_VERIFY_TLS` | `1` | Set to `0` only for explicitly trusted testing |

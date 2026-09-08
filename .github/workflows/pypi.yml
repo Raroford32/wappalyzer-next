@@ -1,10 +1,38 @@
 name: publish pypi package when a tag is created
 
-on: push
+on:
+  push:
+    tags:
+      - "v*"
 
 jobs:
+  verify:
+    name: Verify release
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+        cache: pip
+    - name: Install package and test dependencies
+      run: python3 -m pip install --upgrade . pytest pytest-cov ruff
+    - name: Install Chromium
+      run: python3 -m playwright install --with-deps chromium
+    - name: Run static checks
+      run: |
+        ruff check .
+        ruff format --check .
+    - name: Run complete test suite
+      run: pytest --cov --cov-fail-under=60
+      env:
+        RUN_BROWSER_TESTS: "1"
+
   build:
     name: Build distribution 📦
+    needs:
+    - verify
     runs-on: ubuntu-latest
 
     steps:
