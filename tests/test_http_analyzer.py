@@ -144,3 +144,25 @@ def test_versions_from_multiple_channels_merge_deterministically():
         "version": "10",
         "confidence": 100,
     }
+
+
+def test_expired_url_budget_skips_secondary_requests(monkeypatch):
+    def forbidden(*args, **kwargs):
+        raise AssertionError("secondary request exceeded the URL budget")
+
+    monkeypatch.setattr(analyzer, "get_dns", forbidden)
+    monkeypatch.setattr(analyzer, "get_robots", forbidden)
+    monkeypatch.setattr(analyzer, "get_certIssuer", forbidden)
+    monkeypatch.setattr(analyzer, "_probe_responses", forbidden)
+
+    evidence = analyzer.collect_evidence(
+        response(),
+        "balanced",
+        timeout=1,
+        deadline=0,
+    )
+
+    assert evidence["dns"] == {}
+    assert evidence["robots"] == ""
+    assert evidence["certIssuer"] == ""
+    assert evidence["probes"] == {}

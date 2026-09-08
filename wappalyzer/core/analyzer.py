@@ -1,6 +1,7 @@
 import concurrent.futures
 import functools
 import os
+import time
 from urllib.parse import urljoin, urlparse
 
 import tldextract
@@ -79,6 +80,10 @@ class ScanRequestError(RuntimeError):
 def configure_asset_workers(worker_count):
     global ASSET_WORKERS
     ASSET_WORKERS = max(1, worker_count)
+
+
+def _remaining_seconds(deadline):
+    return max(0.0, deadline - time.monotonic())
 
 
 def _compile_value(value):
@@ -276,7 +281,9 @@ def _probe_responses(base_url, timeout, cookie, budget):
     return responses
 
 
-def collect_evidence(response, scan_type, cookie=None, timeout=30):
+def collect_evidence(response, scan_type, cookie=None, timeout=30, deadline=None):
+    if deadline is None:
+        deadline = time.monotonic() + timeout
     soup = BeautifulSoup(response.text, "html.parser")
     r = tldextract.extract(response.url)
     parsed_url = urlparse(response.url)
@@ -306,13 +313,14 @@ def collect_evidence(response, scan_type, cookie=None, timeout=30):
 
         for _ in range(ASSET_DEPTH):
             new_urls = [url for url in pending_scripts if url not in fetched_scripts]
+            remaining = _remaining_seconds(deadline)
 
-            if not new_urls:
+            if not new_urls or remaining <= 0:
                 break
 
             batch = _fetch_assets(
                 new_urls,
-                timeout,
+                remaining,
                 cookie,
                 response.url,
                 asset_budget,
@@ -345,26 +353,74 @@ def collect_evidence(response, scan_type, cookie=None, timeout=30):
 
         script_sources = list(dict.fromkeys(script_sources + list(fetched_scripts)))
         css_urls = _stylesheet_urls(response.url, soup)
-        css_sources.extend(
-            _fetch_assets(
-                css_urls,
-                timeout,
-                cookie,
-                response.url,
-                asset_budget,
-            ).values()
-        )
+        remaining = _remaining_seconds(deadline)
 
-    dns = get_dns(domain, timeout=min(timeout, 5)) if scan_type != "fast" and domain else {}
+        if remaining > 0:
+            css_sources.extend(
+                _fetch_assets(
+                    css_urls,
+                    remaining,
+                    cookie,
+                    response.url,
+                    asset_budget,
+                ).values()
+            )
+
+    dns = {}
     meta = get_meta(soup)
     cookies = response.cookies.get_dict()
-    robots = get_robots(response.url, timeout=timeout) if scan_type != "fast" else ""
-    cert_issuer = get_certIssuer(response, timeout=min(timeout, 5)) if scan_type != "fast" else ""
-    probes = (
-        _probe_responses(base_url, timeout, cookie, asset_budget)
-        if scan_type != "fast"
-        else {}
-    )
+    robots = ""
+    cert_issuer = ""
+    probes = {}
+    remaining = _remaining_seconds(deadline)
+
+    if scan_type != "fast" and remaining > 0:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+            future_to_field = {
+                executor.submit(
+                    get_robots,
+                    response.url,
+                    timeout=remaining,
+                ): "robots",
+                executor.submit(
+                    get_certIssuer,
+                    response,
+                    timeout=min(remaining, 5),
+                ): "certIssuer",
+                executor.submit(
+                    _probe_responses,
+                    base_url,
+                    remaining,
+                    cookie,
+                    asset_budget,
+                ): "probes",
+            }
+
+            if domain:
+                future_to_field[
+                    executor.submit(
+                        get_dns,
+                        domain,
+                        timeout=min(remaining, 5),
+                    )
+                ] = "dns"
+
+            for future in concurrent.futures.as_completed(future_to_field):
+                field = future_to_field[future]
+
+                try:
+                    value = future.result()
+                except Exception:
+                    value = {} if field in {"dns", "probes"} else ""
+
+                if field == "dns":
+                    dns = value
+                elif field == "robots":
+                    robots = value
+                elif field == "certIssuer":
+                    cert_issuer = value
+                elif field == "probes":
+                    probes = value
 
     return {
         "certIssuer": cert_issuer,
@@ -405,13 +461,20 @@ def _add_candidate(result, tech_name, candidate):
     current["version"] = better_version(version, current["version"])
 
 
-def analyze_from_response(response, scan_type, cookie=None, timeout=30):
+def analyze_from_response(
+    response,
+    scan_type,
+    cookie=None,
+    timeout=30,
+    deadline=None,
+):
     prepare_matchers()
     evidence = collect_evidence(
         response,
         scan_type,
         cookie=cookie,
         timeout=timeout,
+        deadline=deadline,
     )
 
     result = {}
@@ -482,6 +545,7 @@ def analyze_from_response(response, scan_type, cookie=None, timeout=30):
 
 
 def http_scan(url, scan_type, cookie=None, timeout=30):
+    deadline = time.monotonic() + timeout
     response = get_response(url, cookie, timeout=timeout)
     if response is not None:
         return analyze_from_response(
@@ -489,6 +553,7 @@ def http_scan(url, scan_type, cookie=None, timeout=30):
             scan_type,
             cookie=cookie,
             timeout=timeout,
+            deadline=deadline,
         )
 
     raise ScanRequestError(f"Unable to fetch {url}")
