@@ -77,7 +77,23 @@ def compile_pattern(regex):
     try:
         return re.compile(clean_regex), version_type, confidence
     except re.error:
-        return None, version_type, confidence
+        repaired_regex = repair_javascript_pattern(clean_regex)
+
+        try:
+            return re.compile(repaired_regex), version_type, confidence
+        except re.error:
+            return None, version_type, confidence
+
+
+def repair_javascript_pattern(regex):
+    valid_letter_escapes = set("AbBdDsSwWZfnrtvaxuUN")
+
+    def replace_escape(match):
+        character = match.group(1)
+        return match.group(0) if character in valid_letter_escapes else character
+
+    regex = re.sub(r"\\([A-Za-z])", replace_escape, regex)
+    return regex.replace(r"\.-", r"\.\-")
 
 
 def version_key(version):
@@ -95,14 +111,32 @@ def version_key(version):
     return tuple(parts)
 
 
+def version_rank(version):
+    normalized = version or ""
+    return (
+        version_key(normalized),
+        len(normalized),
+        normalized.casefold(),
+        normalized,
+    )
+
+
+def better_version(candidate, current):
+    if not candidate:
+        return current or ""
+
+    if not current:
+        return candidate
+
+    return candidate if version_rank(candidate) > version_rank(current) else current
+
+
 def match_key(matched, version, confidence):
     return (
         bool(matched),
         int(confidence),
         bool(version),
-        version_key(version),
-        len(version or ""),
-        version or "",
+        version_rank(version),
     )
 
 

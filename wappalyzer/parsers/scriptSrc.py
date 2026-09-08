@@ -16,10 +16,9 @@ def get_urls_from_js(base_url, js):
 
 
 def get_scriptSrc(base_url, soup):
-    if type(soup) == str:
+    if isinstance(soup, str):
         return get_urls_from_js(base_url, soup)
 
-    scheme = urlparse(base_url).scheme
     scriptSrc = []
     for script in soup.find_all("script"):
         src = script.get("src")

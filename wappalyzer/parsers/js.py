@@ -141,14 +141,14 @@ def get_js(js_code: str) -> dict:
                     # Simple array parsing - doesn't handle nested structures
                     items = value[1:-1].split(",")
                     return [parse_js_value(item) for item in items if item.strip()]
-                except:
+                except Exception:
                     return value
             # Handle objects
             if value.startswith("{") and value.endswith("}"):
                 return value  # Return as string, as proper object parsing would be complex
             # If we can't parse it, return as is
             return value
-        except:
+        except Exception:
             return value
 
     # Process each statement

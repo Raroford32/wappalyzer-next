@@ -1,9 +1,9 @@
 from requests import Response
 from requests.cookies import cookiejar_from_dict
 from requests.structures import CaseInsensitiveDict
+import pytest
 
 from wappalyzer.core import analyzer, utils
-
 
 HTML = b"""
 <!doctype html>
@@ -71,3 +71,76 @@ def test_fast_analyzer_uses_compiled_channel_plan(monkeypatch):
 
     assert list(result) == sorted(database)
     assert result["DomTech"]["version"] == "22.1.5"
+
+
+def test_asset_credentials_never_cross_origins(monkeypatch):
+    seen = {}
+
+    def fake_fetch(url, timeout, cookie):
+        seen[url] = cookie
+        return url, "ok"
+
+    monkeypatch.setattr(analyzer, "_fetch_asset", fake_fetch)
+    analyzer._fetch_assets(
+        [
+            "https://app.example.test/app.js",
+            "https://cdn.example.test/library.js",
+        ],
+        timeout=5,
+        cookie="session=secret",
+        credential_origin="https://app.example.test/page",
+        budget=analyzer.AssetBudget(2),
+    )
+
+    assert seen["https://app.example.test/app.js"] == "session=secret"
+    assert seen["https://cdn.example.test/library.js"] is None
+
+
+def test_asset_budget_is_shared_across_resource_classes(monkeypatch):
+    monkeypatch.setattr(
+        analyzer,
+        "_fetch_asset",
+        lambda url, timeout, cookie: (url, "ok"),
+    )
+    budget = analyzer.AssetBudget(2)
+
+    scripts = analyzer._fetch_assets(
+        ["https://example.test/a.js", "https://example.test/b.js"],
+        5,
+        None,
+        "https://example.test",
+        budget,
+    )
+    styles = analyzer._fetch_assets(
+        ["https://example.test/a.css"],
+        5,
+        None,
+        "https://example.test",
+        budget,
+    )
+
+    assert len(scripts) == 2
+    assert styles == {}
+
+
+def test_primary_request_failure_is_not_reported_as_empty_success(monkeypatch):
+    monkeypatch.setattr(analyzer, "get_response", lambda *args, **kwargs: None)
+
+    with pytest.raises(analyzer.ScanRequestError, match="Unable to fetch"):
+        analyzer.http_scan("https://unreachable.example", "fast")
+
+
+def test_versions_from_multiple_channels_merge_deterministically():
+    forward = {}
+    reverse = {}
+
+    analyzer._add_candidate(forward, "VersionedTech", (True, "10", 50))
+    analyzer._add_candidate(forward, "VersionedTech", (True, "9", 50))
+    analyzer._add_candidate(reverse, "VersionedTech", (True, "9", 50))
+    analyzer._add_candidate(reverse, "VersionedTech", (True, "10", 50))
+
+    assert forward == reverse
+    assert forward["VersionedTech"] == {
+        "version": "10",
+        "confidence": 100,
+    }

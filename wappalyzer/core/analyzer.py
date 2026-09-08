@@ -9,7 +9,13 @@ from bs4 import BeautifulSoup
 from wappalyzer.analyzers.dom import compile_selector, match_dom
 from wappalyzer.analyzers.js import match_js
 from wappalyzer.core.config import tech_db
-from wappalyzer.core.matcher import compile_pattern, match, match_dict, parse_pattern
+from wappalyzer.core.matcher import (
+    better_version,
+    compile_pattern,
+    match,
+    match_dict,
+    parse_pattern,
+)
 from wappalyzer.core.requester import get_response
 from wappalyzer.core.utils import create_result
 from wappalyzer.parsers.certIssuer import get_certIssuer
@@ -19,7 +25,6 @@ from wappalyzer.parsers.js import get_js
 from wappalyzer.parsers.meta import get_meta
 from wappalyzer.parsers.robots import get_robots
 from wappalyzer.parsers.scriptSrc import get_scriptSrc
-
 
 PATTERN_FIELDS = {
     "certIssuer",
@@ -38,9 +43,9 @@ ASSET_WORKERS = max(
     int(
         os.getenv(
             "WAPPALYZER_ASSET_WORKERS",
-            str(max(1, (os.cpu_count() or 1) * 2)),
+            str(max(1, os.cpu_count() or 1)),
         )
-    )
+    ),
 )
 ASSET_LIMIT = max(0, int(os.getenv("WAPPALYZER_ASSET_LIMIT", "64")))
 ASSET_DEPTH = max(0, int(os.getenv("WAPPALYZER_ASSET_DEPTH", "2")))
@@ -65,6 +70,15 @@ def build_detector_plan(database=None):
 
 
 DETECTOR_PLAN = build_detector_plan()
+
+
+class ScanRequestError(RuntimeError):
+    pass
+
+
+def configure_asset_workers(worker_count):
+    global ASSET_WORKERS
+    ASSET_WORKERS = max(1, worker_count)
 
 
 def _compile_value(value):
@@ -131,6 +145,30 @@ def _js_evidence(source):
     }
 
 
+class AssetBudget:
+    def __init__(self, limit):
+        self.remaining = max(0, limit)
+
+    def claim(self, urls):
+        claimed = list(dict.fromkeys(urls))[: self.remaining]
+        self.remaining -= len(claimed)
+        return claimed
+
+
+def _origin(url):
+    parsed = urlparse(url)
+    default_port = 443 if parsed.scheme.casefold() == "https" else 80
+    return (
+        parsed.scheme.casefold(),
+        (parsed.hostname or "").casefold(),
+        parsed.port or default_port,
+    )
+
+
+def _same_origin(first_url, second_url):
+    return _origin(first_url) == _origin(second_url)
+
+
 def _fetch_asset(url, timeout, cookie):
     response = get_response(
         url,
@@ -145,8 +183,8 @@ def _fetch_asset(url, timeout, cookie):
     return response.url, response.text
 
 
-def _fetch_assets(urls, timeout, cookie):
-    ordered_urls = list(dict.fromkeys(urls))[:ASSET_LIMIT]
+def _fetch_assets(urls, timeout, cookie, credential_origin, budget):
+    ordered_urls = budget.claim(urls)
 
     if not ordered_urls:
         return {}
@@ -155,7 +193,15 @@ def _fetch_assets(urls, timeout, cookie):
     worker_count = min(len(ordered_urls), ASSET_WORKERS)
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=worker_count) as executor:
-        futures = {executor.submit(_fetch_asset, url, timeout, cookie): url for url in ordered_urls}
+        futures = {
+            executor.submit(
+                _fetch_asset,
+                url,
+                timeout,
+                cookie if _same_origin(credential_origin, url) else None,
+            ): url
+            for url in ordered_urls
+        }
 
         for future in concurrent.futures.as_completed(futures):
             requested_url = futures[future]
@@ -191,9 +237,11 @@ def _stylesheet_urls(base_url, soup):
     return urls
 
 
-def _probe_responses(base_url, timeout, cookie):
+def _probe_responses(base_url, timeout, cookie, budget):
     urls = {path: urljoin(base_url, path) for probes in PROBES.values() for path in probes}
     responses = {}
+    claimed_urls = set(budget.claim(urls.values()))
+    urls = {path: url for path, url in urls.items() if url in claimed_urls}
 
     if not urls:
         return responses
@@ -237,6 +285,7 @@ def collect_evidence(response, scan_type, cookie=None, timeout=30):
     js = []
     scripts = []
     xhr_candidates = []
+    asset_budget = AssetBudget(ASSET_LIMIT)
 
     for script in soup.find_all("script"):
         if not script.get("src"):
@@ -256,18 +305,29 @@ def collect_evidence(response, scan_type, cookie=None, timeout=30):
         fetched_scripts = {}
 
         for _ in range(ASSET_DEPTH):
-            new_urls = [url for url in pending_scripts if url not in fetched_scripts][
-                : max(0, ASSET_LIMIT - len(fetched_scripts))
-            ]
+            new_urls = [url for url in pending_scripts if url not in fetched_scripts]
 
             if not new_urls:
                 break
 
-            batch = _fetch_assets(new_urls, timeout, cookie)
-            fetched_scripts.update((url, batch.get(url, "")) for url in new_urls)
+            batch = _fetch_assets(
+                new_urls,
+                timeout,
+                cookie,
+                response.url,
+                asset_budget,
+            )
+            fetched_scripts.update(
+                (url, batch.get(url, ""))
+                for url in new_urls
+                if url in batch
+            )
             pending_scripts = []
 
             for url in new_urls:
+                if url not in fetched_scripts:
+                    continue
+
                 source = fetched_scripts[url]
 
                 if not source:
@@ -285,14 +345,26 @@ def collect_evidence(response, scan_type, cookie=None, timeout=30):
 
         script_sources = list(dict.fromkeys(script_sources + list(fetched_scripts)))
         css_urls = _stylesheet_urls(response.url, soup)
-        css_sources.extend(_fetch_assets(css_urls, timeout, cookie).values())
+        css_sources.extend(
+            _fetch_assets(
+                css_urls,
+                timeout,
+                cookie,
+                response.url,
+                asset_budget,
+            ).values()
+        )
 
     dns = get_dns(domain, timeout=min(timeout, 5)) if scan_type != "fast" and domain else {}
     meta = get_meta(soup)
     cookies = response.cookies.get_dict()
     robots = get_robots(response.url, timeout=timeout) if scan_type != "fast" else ""
     cert_issuer = get_certIssuer(response, timeout=min(timeout, 5)) if scan_type != "fast" else ""
-    probes = _probe_responses(base_url, timeout, cookie) if scan_type != "fast" else {}
+    probes = (
+        _probe_responses(base_url, timeout, cookie, asset_budget)
+        if scan_type != "fast"
+        else {}
+    )
 
     return {
         "certIssuer": cert_issuer,
@@ -330,8 +402,7 @@ def _add_candidate(result, tech_name, candidate):
     current = result[tech_name]
     current["confidence"] = min(current["confidence"] + confidence, 100)
 
-    if version and (not current["version"] or len(version) > len(current["version"])):
-        current["version"] = version
+    current["version"] = better_version(version, current["version"])
 
 
 def analyze_from_response(response, scan_type, cookie=None, timeout=30):
@@ -412,11 +483,12 @@ def analyze_from_response(response, scan_type, cookie=None, timeout=30):
 
 def http_scan(url, scan_type, cookie=None, timeout=30):
     response = get_response(url, cookie, timeout=timeout)
-    if response:
+    if response is not None:
         return analyze_from_response(
             response,
             scan_type,
             cookie=cookie,
             timeout=timeout,
         )
-    return {}
+
+    raise ScanRequestError(f"Unable to fetch {url}")

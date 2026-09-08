@@ -10,7 +10,29 @@ def compile_selector(selector):
     try:
         return soupsieve.compile(selector)
     except Exception:
-        return None
+        repaired_selector = repair_selector(selector)
+
+        try:
+            return soupsieve.compile(repaired_selector)
+        except Exception:
+            return None
+
+
+def repair_selector(selector):
+    repaired = selector
+
+    if repaired.endswith("]"):
+        if repaired.count("'") % 2:
+            repaired = f"{repaired[:-1]}']"
+        elif repaired.count('"') % 2:
+            repaired = f'{repaired[:-1]}"]'
+
+    missing_brackets = repaired.count("[") - repaired.count("]")
+
+    if missing_brackets > 0:
+        repaired += "]" * missing_brackets
+
+    return repaired
 
 
 def query(soup, selector):
@@ -36,7 +58,7 @@ def element_property(element, property_name):
         value = element.get("class", [])
         return " ".join(value) if isinstance(value, list) else value
 
-    return element.get(property_name, "")
+    return element.get(property_name)
 
 
 def match_element_rule(element, rule):
@@ -78,16 +100,22 @@ def match_element_rule(element, rule):
         for name, pattern in properties.items():
             value = element_property(element, name)
 
-            if value == "" and pattern != "":
+            if value is None:
                 continue
 
-            candidate = (True, "", 100) if pattern == "" and value != "" else match(pattern, value)
+            candidate = (True, "", 100) if pattern == "" else match(pattern, value)
             best = better_match(candidate, best)
 
     if "src" in rule:
         source = element.get("src", "")
-        candidate = (True, "", 100) if rule["src"] == "" and source else match(rule["src"], source)
-        best = better_match(candidate, best)
+
+        if source:
+            candidate = (
+                (True, "", 100)
+                if rule["src"] == ""
+                else match(rule["src"], source)
+            )
+            best = better_match(candidate, best)
 
     return best
 

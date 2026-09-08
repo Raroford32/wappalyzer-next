@@ -2,9 +2,11 @@ import csv
 import html
 import json
 import sys
+
 from huepy import bold, green
+
 from wappalyzer.core.config import cat_db, groups_db, tech_db
-from wappalyzer.core.matcher import parse_pattern
+from wappalyzer.core.matcher import better_version, parse_pattern
 
 
 def get_cats_and_groups(tech_name):
@@ -55,10 +57,10 @@ def merge_detection(target, candidate, additive=False):
             candidate.get("confidence", 0),
         )
 
-    if candidate.get("version") and (
-        not target.get("version") or len(candidate["version"]) > len(target["version"])
-    ):
-        target["version"] = candidate["version"]
+    target["version"] = better_version(
+        candidate.get("version", ""),
+        target.get("version", ""),
+    )
 
     target["_direct"] = target.get("_direct", False) or candidate.get("_direct", False)
 
@@ -138,14 +140,14 @@ def resolve_excludes(detections):
 def requirements_met(name, detections):
     technology = tech_db.get(name, {})
     required = relationship_names(technology.get("requires", []))
-
-    if required and not any(item in detections for item in required):
-        return False
-
     required_categories = technology.get("requiresCategory", [])
     required_categories = (
         required_categories if isinstance(required_categories, list) else [required_categories]
     )
+    gates = []
+
+    if required:
+        gates.append(any(item in detections for item in required))
 
     if required_categories:
         detected_categories = {
@@ -153,23 +155,61 @@ def requirements_met(name, detections):
             for detected_name in detections
             for category in tech_db.get(detected_name, {}).get("cats", [])
         }
+        gates.append(any(category in detected_categories for category in required_categories))
 
-        if not any(category in detected_categories for category in required_categories):
-            return False
-
-    return True
+    return not gates or any(gates)
 
 
 def resolve_requirements(detections):
-    changed = True
+    admitted = {
+        name: value
+        for name, value in detections.items()
+        if not tech_db.get(name, {}).get("requires")
+        and not tech_db.get(name, {}).get("requiresCategory")
+    }
+    pending = {
+        name: value
+        for name, value in detections.items()
+        if name not in admitted
+    }
 
-    while changed:
-        changed = False
+    while pending:
+        trigger_detections = {
+            name: value.copy()
+            for name, value in admitted.items()
+        }
+        resolve_excludes(trigger_detections)
+        resolve_implies(trigger_detections)
+        newly_admitted = [
+            name
+            for name in sorted(pending)
+            if requirements_met(name, trigger_detections)
+        ]
 
-        for name in tuple(detections):
-            if name in tech_db and not requirements_met(name, detections):
-                detections.pop(name)
-                changed = True
+        if not newly_admitted:
+            break
+
+        for name in newly_admitted:
+            admitted[name] = pending.pop(name)
+
+    detections.clear()
+    detections.update(admitted)
+
+
+def enrich_result(detections):
+    enriched = {}
+
+    for tech_name in sorted(detections):
+        value = detections[tech_name]
+        categories, groups = get_cats_and_groups(tech_name)
+        enriched[tech_name] = {
+            "version": value.get("version", ""),
+            "confidence": value.get("confidence", 100),
+            "categories": categories,
+            "groups": groups,
+        }
+
+    return enriched
 
 
 def create_result(technologies):
@@ -187,23 +227,11 @@ def create_result(technologies):
         else:
             resolved[tech_name] = candidate
 
-    resolve_implies(resolved)
-    resolve_excludes(resolved)
     resolve_requirements(resolved)
+    resolve_excludes(resolved)
+    resolve_implies(resolved)
 
-    enriched = {}
-
-    for tech_name in sorted(resolved):
-        value = resolved[tech_name]
-        categories, groups = get_cats_and_groups(tech_name)
-        enriched[tech_name] = {
-            "version": value.get("version", ""),
-            "confidence": value.get("confidence", 100),
-            "categories": categories,
-            "groups": groups,
-        }
-
-    return enriched
+    return enrich_result(resolved)
 
 
 def pretty_print(result):
