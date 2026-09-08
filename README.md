@@ -43,7 +43,7 @@ python -m playwright install chromium
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/s0md3v/wappalyzer-next.git
+git clone https://github.com/Raroford32/wappalyzer-next.git
 cd wappalyzer-next
 ```
 
@@ -56,11 +56,13 @@ docker compose build
 
 - Scan a single URL:
 ```bash
-docker compose run --rm wappalyzer -i https://example.com
+WAPPALYZER_UID="$(id -u)" WAPPALYZER_GID="$(id -g)" \
+  docker compose run --rm wappalyzer -i https://example.com
 ```
 - Scan multiple URLs from a file:
 ```bash
-docker compose run --rm wappalyzer -i urls.txt -w 3 -oJ output.json
+WAPPALYZER_UID="$(id -u)" WAPPALYZER_GID="$(id -g)" \
+  docker compose run --rm wappalyzer -i urls.txt -w 3 -oJ output.json
 ```
 </details>
 
@@ -86,7 +88,8 @@ When an output flag is used without a file, the report is written to stdout. Sta
   - `balanced`: HTTP-based scan with more requests
   - `full`: Complete scan using wappalyzer extension
 - `-w, --workers`: Number of concurrent workers, or `auto` (default)
-- `-t, --timeout`: Maximum seconds to wait for a page load in full scans (default: 30)
+- `-t, --timeout`: Total HTTP request or browser page budget in seconds
+  (default: `WAPPALYZER_READ_TIMEOUT`, or 30)
 - `-oJ [file]`: JSON output file path, or stdout when the file is omitted or set to `-`
 - `-oC [file]`: CSV output file path, or stdout when the file is omitted or set to `-`
 - `-oH [file]`: HTML output file path, or stdout when the file is omitted or set to `-`
@@ -95,6 +98,15 @@ When an output flag is used without a file, the report is written to stdout. Sta
 ## For Developers
 
 The python library is available on pypi as `wappalyzer` and can be imported with the same name.
+
+For development, install the checkout—not the published package:
+
+```bash
+python -m pip install --editable .
+python -m playwright install chromium
+python -m pip install pytest pytest-cov ruff
+python -m pytest
+```
 
 #### Using the Library
 
@@ -107,16 +119,18 @@ budgets for full scans.
 from wappalyzer import Wappalyzer
 
 with Wappalyzer(workers=None, timeout=30) as scanner:
-    results = scanner.analyze_many([
-        'https://example.com',
-        'https://github.com',
-        'https://python.org',
-    ])
+    results = scanner.analyze_many(
+        [
+            "https://example.com",
+            "https://github.com",
+            "https://python.org",
+        ]
+    )
 
 for url, technologies in results.items():
     print(url)
     for name, data in technologies.items():
-        version = f" {data['version']}" if data['version'] else ""
+        version = f" {data['version']}" if data["version"] else ""
         print(f"  {name}{version}")
 ```
 
@@ -126,8 +140,8 @@ The same scanner can also scan one URL at a time without reopening Chromium:
 from wappalyzer import Wappalyzer
 
 with Wappalyzer(workers=3, timeout=30) as scanner:
-    github = scanner.analyze('https://github.com')
-    python = scanner.analyze('https://python.org')
+    github = scanner.analyze("https://github.com")
+    python = scanner.analyze("https://python.org")
 ```
 
 For a single URL, `analyze()` is shorter. It creates its own scanner, runs one scan, and closes it.
@@ -136,10 +150,10 @@ For a single URL, `analyze()` is shorter. It creates its own scanner, runs one s
 from wappalyzer import analyze
 
 results = analyze(
-    url='https://example.com',
-    scan_type='full',  # 'fast', 'balanced', or 'full'
-    cookie='sessionid=abc123',
-    timeout=30
+    url="https://example.com",
+    scan_type="full",  # 'fast', 'balanced', or 'full'
+    cookie="sessionid=abc123",
+    timeout=30,
 )
 ```
 
@@ -154,8 +168,10 @@ Do not call the top-level `analyze()` function in a loop for large jobs. Use `Wa
   - `'full'`: Complete scan including JavaScript execution (default)
 - `workers` (int or `None`, optional): Worker count. `None` selects a
   resource-aware value (default).
-- `cookie` (str, optional): Cookie header string for authenticated scans
-- `timeout` (int, optional): Maximum seconds to wait for a page load in full scans (default: 30)
+- `cookie` (str, optional): Cookie header string for authenticated scans.
+  Balanced scans never forward it to cross-origin assets.
+- `timeout` (int, optional): Total HTTP request or browser page budget. When
+  omitted, `WAPPALYZER_READ_TIMEOUT` is used.
 
 #### Return Value
 
@@ -181,6 +197,10 @@ Returns a dictionary with the URL as key and detected technologies as value:
 }
 ```
 
+Primary request failures raise `ScanRequestError` for one-URL calls. Batch calls
+return an empty technology mapping for that URL and deliver the exception to
+`on_error`; completed URLs continue streaming through `on_result`.
+
 ### FAQ
 
 #### Why Chromium and Playwright?
@@ -202,14 +222,14 @@ The full scanner runs the Wappalyzer extension in Chromium through Playwright. C
   bounded, and every network operation has a deadline.
 - Full-scan browser workers pass an extension-readiness barrier before receiving
   work. Each URL gets a fresh page and its origin storage is cleared afterward.
-- Results and callbacks are emitted in input order.
+- Final result mappings preserve input order; callbacks stream as URLs complete.
 
 The following environment variables tune resource policy without code changes:
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `WAPPALYZER_WORKERS` | resource-aware | Override automatic top-level workers |
-| `WAPPALYZER_ASSET_WORKERS` | based on CPU | Concurrent assets per HTTP process |
+| `WAPPALYZER_ASSET_WORKERS` | global CPU budget | Explicit concurrent asset override |
 | `WAPPALYZER_ASSET_LIMIT` | `64` | Maximum assets fetched per URL |
 | `WAPPALYZER_ASSET_DEPTH` | `2` | Script discovery depth |
 | `WAPPALYZER_MAX_ASSET_BYTES` | `2097152` | Maximum script, CSS, or probe body |
@@ -217,3 +237,4 @@ The following environment variables tune resource policy without code changes:
 | `WAPPALYZER_READ_TIMEOUT` | `30` | HTTP read timeout in seconds |
 | `WAPPALYZER_MAX_RESPONSE_BYTES` | `10485760` | Maximum response body size |
 | `WAPPALYZER_VERIFY_TLS` | `1` | Set to `0` only for explicitly trusted testing |
+| `WAPPALYZER_BLOCK_RESOURCE_TYPES` | empty | Optional comma-separated browser resources to block; may reduce detection coverage |

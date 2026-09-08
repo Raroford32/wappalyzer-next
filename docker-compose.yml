@@ -2,6 +2,7 @@ services:
   wappalyzer:
     build: .
     shm_size: '2gb'
+    user: "${WAPPALYZER_UID:-10001}:${WAPPALYZER_GID:-10001}"
     volumes:
       - .:/app
     working_dir: /app

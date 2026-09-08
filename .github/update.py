@@ -3,11 +3,11 @@ import json
 import os
 import re
 import shutil
+import stat
 import tempfile
 import urllib.request
 import zipfile
 from pathlib import Path
-
 
 DEFAULT_URL = (
     "https://addons.mozilla.org/firefox/downloads/latest/wappalyzer/platform:2/wappalyzer.xpi"
@@ -17,6 +17,10 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = REPO_ROOT / "wappalyzer" / "data"
 EXTENSION_ARCHIVE = DATA_DIR / "wappalyzer-extension.zip"
 FINGERPRINT_LOCK = DATA_DIR / "fingerprints.lock.json"
+EXPECTED_SOURCE_SHA256 = (
+    "3a369e5580a1b4864001c021e0f5b524a7f08968b438fb7d5d7cbe887e8cee89"
+)
+MAX_EXTENSION_UNCOMPRESSED_BYTES = 512 * 1024 * 1024
 
 PROMPT_BLOCK = re.compile(
     r"^[ \t]*const current = await get(?:Cached)?Option\('version'\)\n"
@@ -24,10 +28,33 @@ PROMPT_BLOCK = re.compile(
     r"(?=^[ \t]*initDone\(\))",
     re.MULTILINE | re.DOTALL,
 )
+INIT_BLOCK = re.compile(
+    r"^  async init\(\) \{.*?^  \},\n\n(?=  closeCurrentTab)",
+    re.MULTILINE | re.DOTALL,
+)
+SCANNER_INIT = """  async init() {
+    try {
+      await Driver.loadTechnologies()
+      Driver.cache = createDriverCache()
+    } catch (error) {
+      Driver.error(error)
+    } finally {
+      globalThis.__WAPPALYZER_SCANNER_READY__ = true
+      globalThis.__WAPPALYZER_TECHNOLOGY_COUNT__ =
+        Wappalyzer.technologies.length
+      initDone()
+    }
+  },
+
+"""
 
 
 def patch_index_js(content):
     content = PROMPT_BLOCK.sub("", content, count=1)
+    content, replacements = INIT_BLOCK.subn(SCANNER_INIT, content, count=1)
+
+    if replacements != 1:
+        raise RuntimeError("Failed to install deterministic scanner initialization")
 
     if "https://www.wappalyzer.com/installed/" in content:
         raise RuntimeError("Failed to remove install prompt from js/index.js")
@@ -108,12 +135,28 @@ def validate_extension_tree(extension_dir, require_technologies=False):
 
 def safe_extract(archive, destination):
     destination = destination.resolve()
+    seen = set()
+    total_size = 0
 
     for member in archive.infolist():
         target = (destination / member.filename).resolve()
+        normalized_name = member.filename.casefold()
+        mode = member.external_attr >> 16
 
         if destination not in target.parents and target != destination:
             raise RuntimeError(f"Unsafe archive path: {member.filename}")
+
+        if normalized_name in seen:
+            raise RuntimeError(f"Duplicate archive path: {member.filename}")
+
+        if stat.S_ISLNK(mode):
+            raise RuntimeError(f"Archive contains a symlink: {member.filename}")
+
+        seen.add(normalized_name)
+        total_size += member.file_size
+
+        if total_size > MAX_EXTENSION_UNCOMPRESSED_BYTES:
+            raise RuntimeError("Archive exceeds the extraction size limit")
 
     archive.extractall(destination)
 
@@ -188,6 +231,14 @@ def main():
         with urllib.request.urlopen(request, timeout=60) as response:
             archive_bytes = response.read()
 
+        source_sha256 = hashlib.sha256(archive_bytes).hexdigest()
+
+        if source_sha256 != EXPECTED_SOURCE_SHA256:
+            raise RuntimeError(
+                "Upstream extension changed; audit the new source before "
+                f"updating EXPECTED_SOURCE_SHA256 (received {source_sha256})"
+            )
+
         archive_path.write_bytes(archive_bytes)
 
         with zipfile.ZipFile(archive_path) as archive:
@@ -203,32 +254,45 @@ def main():
         for path in sorted((extract_dir / "technologies").glob("*.json")):
             technologies.update(json.loads(path.read_text(encoding="utf-8")))
 
-        categories = json.loads(
-            (extract_dir / "categories.json").read_text(encoding="utf-8")
-        )
-        groups = json.loads(
-            (extract_dir / "groups.json").read_text(encoding="utf-8")
-        )
+        categories = json.loads((extract_dir / "categories.json").read_text(encoding="utf-8"))
+        groups = json.loads((extract_dir / "groups.json").read_text(encoding="utf-8"))
         validate_fingerprints(technologies, categories, groups)
+        output_dir = tempdir / "output"
+        output_dir.mkdir()
 
-        (DATA_DIR / "technologies.json").write_text(
+        (output_dir / "technologies.json").write_text(
             json.dumps(technologies, indent=4) + "\n",
             encoding="utf-8",
         )
-        shutil.copy2(extract_dir / "groups.json", DATA_DIR / "groups.json")
-        shutil.copy2(extract_dir / "categories.json", DATA_DIR / "categories.json")
-
-        write_chromium_extension_archive(extract_dir, EXTENSION_ARCHIVE)
-        manifest = json.loads(
-            (extract_dir / "manifest.json").read_text(encoding="utf-8")
+        shutil.copy2(extract_dir / "groups.json", output_dir / "groups.json")
+        shutil.copy2(
+            extract_dir / "categories.json",
+            output_dir / "categories.json",
         )
-        FINGERPRINT_LOCK.write_text(
+
+        write_chromium_extension_archive(
+            extract_dir,
+            output_dir / EXTENSION_ARCHIVE.name,
+        )
+        manifest = json.loads((extract_dir / "manifest.json").read_text(encoding="utf-8"))
+        generated_names = (
+            "categories.json",
+            "groups.json",
+            "technologies.json",
+            EXTENSION_ARCHIVE.name,
+        )
+        generated_hashes = {
+            name: hashlib.sha256((output_dir / name).read_bytes()).hexdigest()
+            for name in generated_names
+        }
+        (output_dir / FINGERPRINT_LOCK.name).write_text(
             json.dumps(
                 {
                     "source": URL,
-                    "source_sha256": hashlib.sha256(archive_bytes).hexdigest(),
+                    "source_sha256": source_sha256,
                     "extension_version": manifest.get("version"),
                     "technology_count": len(technologies),
+                    "files": generated_hashes,
                 },
                 indent=2,
                 sort_keys=True,
@@ -236,6 +300,9 @@ def main():
             + "\n",
             encoding="utf-8",
         )
+
+        for output_path in sorted(output_dir.iterdir()):
+            os.replace(output_path, DATA_DIR / output_path.name)
 
 
 if __name__ == "__main__":

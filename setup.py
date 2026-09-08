@@ -2,8 +2,9 @@
 # -*- coding: utf-8 -*-
 
 import io
-from setuptools import setup, find_packages
 from os import path
+
+from setuptools import find_packages, setup
 
 this_directory = path.abspath(path.dirname(__file__))
 with io.open(path.join(this_directory, "README.md"), encoding="utf-8") as f:
@@ -18,12 +19,13 @@ setup(
     author="Somdev Sangwan",
     author_email="s0md3v@gmail.com",
     license="GNU General Public License v3",
-    url="https://github.com/s0md3v/wappalyzer-next",
+    url="https://github.com/Raroford32/wappalyzer-next",
     packages=find_packages(),
     package_data={"wappalyzer": ["data/*"]},
     python_requires=">=3.9",
     install_requires=[
         "requests>=2.32,<3",
+        "urllib3>=2.7,<3",
         "huepy==1.2.1",
         "playwright>=1.50,<2",
         "tldextract>=5.1,<6",

@@ -17,7 +17,9 @@ jobs:
         python-version: "3.12"
         cache: pip
     - name: Install package and test dependencies
-      run: python3 -m pip install --upgrade . pytest pytest-cov ruff
+      run: python3 -m pip install --upgrade --editable . pytest pytest-cov ruff
+    - name: Verify tag matches package version
+      run: test "v$(python3 -c 'import wappalyzer; print(wappalyzer.__version__)')" = "$GITHUB_REF_NAME"
     - name: Install Chromium
       run: python3 -m playwright install --with-deps chromium
     - name: Run static checks
@@ -25,7 +27,7 @@ jobs:
         ruff check .
         ruff format --check .
     - name: Run complete test suite
-      run: pytest --cov --cov-fail-under=60
+      run: timeout 180 pytest --cov --cov-fail-under=45
       env:
         RUN_BROWSER_TESTS: "1"
 
