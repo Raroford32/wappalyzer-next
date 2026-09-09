@@ -221,7 +221,7 @@ const Driver = {
   async onXhrRequestComplete(request) {
     setTimeout(() => {
       return request
-    }, 1000)
+      }, 1000)
   },
 
   /**

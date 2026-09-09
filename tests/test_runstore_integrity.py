@@ -92,11 +92,7 @@ def _success_empty(endpoint, protocol=Protocol.HTTP):
         http_status=200,
         tls=TLSMetadata(
             present=protocol is Protocol.HTTPS,
-            trust=(
-                TLSTrust.TRUSTED
-                if protocol is Protocol.HTTPS
-                else TLSTrust.NOT_APPLICABLE
-            ),
+            trust=(TLSTrust.TRUSTED if protocol is Protocol.HTTPS else TLSTrust.NOT_APPLICABLE),
         ),
         stages=(
             StageResult(name=StageName.STATIC, status=StageStatus.SUCCESS_EMPTY),
@@ -1343,9 +1339,7 @@ def test_verify_outbox_rejects_corruption(tmp_path, corruption, message):
         elif corruption == "payload_length":
             store._connection.execute("UPDATE occurrence_outbox SET byte_length = 1")
         elif corruption == "nonterminal_occurrence":
-            store._connection.execute(
-                "UPDATE occurrences SET terminal = 0, status = NULL"
-            )
+            store._connection.execute("UPDATE occurrences SET terminal = 0, status = NULL")
         elif corruption == "result_missing":
             store._connection.execute("DELETE FROM endpoint_results")
         elif corruption == "result_digest":
@@ -1386,9 +1380,7 @@ def test_verify_outbox_rejects_corruption(tmp_path, corruption, message):
                 ("0" * 64,),
             )
         else:
-            store._connection.execute(
-                "UPDATE outbox_frontier SET byte_offset = byte_offset + 1"
-            )
+            store._connection.execute("UPDATE outbox_frontier SET byte_offset = byte_offset + 1")
 
         with pytest.raises(LedgerIntegrityError, match=message):
             store._verify_outbox()
@@ -1611,9 +1603,7 @@ def test_repository_releases_lock_when_existing_generation_is_corrupt(tmp_path):
     with pytest.raises(LedgerIntegrityError, match="run ID"):
         repository.acquire(spec)
 
-    descriptor = runstore_module._open_generation_lock(
-        generation / RunStore.LOCK_FILENAME
-    )
+    descriptor = runstore_module._open_generation_lock(generation / RunStore.LOCK_FILENAME)
     runstore_module._close_generation_lock(descriptor)
 
 
@@ -1684,9 +1674,7 @@ def test_repository_releases_new_generation_lock_if_store_creation_fails(
 
     generations = list(repository.root.glob("generation-*"))
     assert len(generations) == 1
-    descriptor = runstore_module._open_generation_lock(
-        generations[0] / RunStore.LOCK_FILENAME
-    )
+    descriptor = runstore_module._open_generation_lock(generations[0] / RunStore.LOCK_FILENAME)
     runstore_module._close_generation_lock(descriptor)
 
 

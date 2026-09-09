@@ -539,9 +539,7 @@ def test_system_probe_counts_only_readable_socket_descriptors(monkeypatch):
 
     monkeypatch.setattr(
         "wappalyzer.resources.os.scandir",
-        lambda _path: FakeScandir(
-            ("/proc/self/fd/1", "/proc/self/fd/2", "/proc/self/fd/3")
-        ),
+        lambda _path: FakeScandir(("/proc/self/fd/1", "/proc/self/fd/2", "/proc/self/fd/3")),
     )
     monkeypatch.setattr("wappalyzer.resources.os.readlink", readlink)
 
@@ -669,9 +667,7 @@ def test_system_probe_supports_hybrid_cgroups_and_mount_namespace_roots(tmp_path
     )
 
     assert probe.controller_values("cpu.max") == ("200000 100000",)
-    assert probe.controller_pairs("memory.max", "memory.current") == (
-        (str(2 * GIB), str(GIB)),
-    )
+    assert probe.controller_pairs("memory.max", "memory.current") == ((str(2 * GIB), str(GIB)),)
     assert probe.controller_pairs("pids.max", "pids.current") == (("9", "2"),)
 
 

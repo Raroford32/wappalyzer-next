@@ -225,9 +225,7 @@ def merge_stage_evidence(
         for stage in evidence_bearing_stages
         if stage.response_identity is not None
     }
-    identity_missing = any(
-        stage.response_identity is None for stage in evidence_bearing_stages
-    )
+    identity_missing = any(stage.response_identity is None for stage in evidence_bearing_stages)
     observation = (
         ProtocolObservation.MULTI
         if len(identities) > 1 or (identities and identity_missing)

@@ -185,9 +185,11 @@ def test_open_projection_maps_symlink_errors_to_artifact_safety(
     def unsafe_open(_candidate, _flags, _mode=0o777):
         nonlocal calls
         calls += 1
-        if failure_point == "initial" or (
-            failure_point == "create" and calls == 2
-        ) or (failure_point == "race_reopen" and calls == 3):
+        if (
+            failure_point == "initial"
+            or (failure_point == "create" and calls == 2)
+            or (failure_point == "race_reopen" and calls == 3)
+        ):
             raise OSError(errno.ELOOP, "symlink")
         if calls == 1:
             raise FileNotFoundError(str(path))
@@ -211,9 +213,11 @@ def test_open_projection_preserves_non_alias_io_failures(
     def failing_open(_candidate, _flags, _mode=0o777):
         nonlocal calls
         calls += 1
-        if failure_point == "initial" or (
-            failure_point == "create" and calls == 2
-        ) or (failure_point == "race_reopen" and calls == 3):
+        if (
+            failure_point == "initial"
+            or (failure_point == "create" and calls == 2)
+            or (failure_point == "race_reopen" and calls == 3)
+        ):
             raise OSError(errno.EIO, "storage failure")
         if calls == 1:
             raise FileNotFoundError(str(path))
