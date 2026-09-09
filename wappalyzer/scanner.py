@@ -151,19 +151,19 @@ class _FullScanBackend:
         self.pool = pool
 
     async def analyze_url(self, url, cookie=None):
-        await self.ensure_pool(1)
+        async def scan():
+            await self.ensure_pool(1)
 
-        async with self.pool.get_driver() as driver:
-            if cookie:
-                for cookie_dict in cookie_to_cookies(cookie):
-                    driver.add_cookie(cookie_dict)
+            async with self.pool.get_driver() as driver:
+                if cookie:
+                    for cookie_dict in cookie_to_cookies(cookie):
+                        driver.add_cookie(cookie_dict)
 
-            result_url, detections = await asyncio.wait_for(
-                process_url(driver, url),
-                timeout=max(5, self.timeout * 3),
-            )
+                result_url, detections = await process_url(driver, url)
 
-        return result_url, merge_technologies(detections)
+            return result_url, merge_technologies(detections)
+
+        return await asyncio.wait_for(scan(), timeout=self.timeout)
 
     async def analyze_many(self, urls, cookie=None, on_result=None, on_error=None):
         urls = [url for url in urls if url]

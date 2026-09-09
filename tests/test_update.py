@@ -50,6 +50,14 @@ const Driver = {
     await somethingUnbounded()
   },
 
+  analyzeDom() {
+    const result = ({ name, selector, exists, text, property, attribute, value }, index)
+
+    if (typeof property !== 'undefined') {
+      return result
+    }
+  },
+
   closeCurrentTab(tabId) {
     return tabId
   },
@@ -61,6 +69,9 @@ const Driver = {
     assert "somethingUnbounded" not in patched
     assert "__WAPPALYZER_SCANNER_READY__" in patched
     assert "initDone()" in patched
+    assert "setCachedOption('tracking', false)" in patched
+    assert "getSessionOption('tabResults', {})" in patched
+    assert "typeof src !== 'undefined'" in patched
 
 
 def test_upstream_source_hash_is_pinned_to_bundled_generation():
@@ -117,3 +128,61 @@ def test_chromium_extension_archive_is_byte_reproducible(tmp_path):
     update.write_chromium_extension_archive(extension_dir, second_archive)
 
     assert first_archive.read_bytes() == second_archive.read_bytes()
+
+
+def test_generated_bundle_has_complete_scanner_patches():
+    archive_path = (
+        Path(__file__).parent.parent
+        / "wappalyzer"
+        / "data"
+        / "wappalyzer-extension.zip"
+    )
+
+    with zipfile.ZipFile(archive_path) as archive:
+        index = archive.read("js/index.js").decode()
+        content = archive.read("js/content.js").decode()
+        wappalyzer = archive.read("js/wappalyzer.js").decode()
+
+    assert "setCachedOption('tracking', false)" in index
+    assert "setCachedOption('showCached', false)" in index
+    assert "data-wappalyzer-scanner-state" in content
+    assert "function repairSelector(selector)" in content
+    assert "src: value" in content
+    assert "html: document.documentElement.outerHTML" in content
+    assert "html: oo" in wappalyzer
+    assert "html: transform(html)" in wappalyzer
+
+
+def test_generated_publication_rolls_back_on_failure(tmp_path, monkeypatch):
+    output_dir = tmp_path / "output"
+    data_dir = tmp_path / "data"
+    output_dir.mkdir()
+    data_dir.mkdir()
+    names = ("a.txt", "b.txt", update.FINGERPRINT_LOCK.name)
+
+    for name in names:
+        (output_dir / name).write_text(f"new {name}", encoding="utf-8")
+        (data_dir / name).write_text(f"old {name}", encoding="utf-8")
+
+    real_replace = update.os.replace
+    failed = False
+
+    def fail_mid_publish(source, destination):
+        nonlocal failed
+        destination = Path(destination)
+
+        if not failed and destination == data_dir / "b.txt":
+            failed = True
+            raise OSError("injected publication failure")
+
+        return real_replace(source, destination)
+
+    monkeypatch.setattr(update.os, "replace", fail_mid_publish)
+
+    with pytest.raises(OSError, match="injected"):
+        update.publish_generated_files(output_dir, data_dir)
+
+    assert {
+        name: (data_dir / name).read_text(encoding="utf-8")
+        for name in names
+    } == {name: f"old {name}" for name in names}

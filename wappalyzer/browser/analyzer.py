@@ -67,9 +67,16 @@ async ({ targetUrl, timeoutMs }) => {
 
   const tabs = await Promise.race([
     queryTabs(),
-    new Promise((resolve) => setTimeout(() => resolve([]), timeoutMs)),
+    new Promise((resolve) =>
+      setTimeout(() => resolve({ __error: 'Tab query timed out' }), timeoutMs)
+    ),
   ])
-  const isTargetTab = (tab, exact) => {
+
+  if (tabs?.__error) {
+    return tabs
+  }
+
+  const isTargetTab = (tab) => {
     if (!tab || !tab.url) {
       return false
     }
@@ -80,16 +87,10 @@ async ({ targetUrl, timeoutMs }) => {
       return false
     }
 
-    return exact
-      ? parsed.href === target.href
-      : parsed.hostname === target.hostname
+    return parsed.href === target.href
   }
 
-  return (
-    tabs.find((tab) => isTargetTab(tab, true)) ||
-    tabs.find((tab) => isTargetTab(tab, false)) ||
-    null
-  )
+  return tabs.find((tab) => isTargetTab(tab)) || null
 }
 """
 
@@ -146,11 +147,36 @@ async ({ selectedTab, timeoutMs }) => {
     return []
   }
 
+  const getTab = () => {
+    if (typeof browser !== 'undefined' && browser.tabs?.get) {
+      return browser.tabs
+        .get(selectedTab.id)
+        .catch((error) => ({ __error: error.message || String(error) }))
+    }
+
+    return new Promise((resolve) => {
+      chrome.tabs.get(selectedTab.id, (tab) => {
+        const error = chrome.runtime.lastError
+        resolve(error ? { __error: error.message || String(error) } : tab)
+      })
+    })
+  }
+  const currentTab = await Promise.race([
+    getTab(),
+    new Promise((resolve) =>
+      setTimeout(() => resolve({ __error: 'Tab refresh timed out' }), timeoutMs)
+    ),
+  ])
+
+  if (currentTab?.__error) {
+    return currentTab
+  }
+
   const response = await Promise.race([
     sendMessage({
       source: 'popup.js',
       func: 'getDetectionsForTab',
-      args: [{ id: selectedTab.id, url: selectedTab.url }],
+      args: [{ id: currentTab.id, url: currentTab.url }],
     }),
     new Promise((resolve) =>
       setTimeout(
@@ -226,6 +252,9 @@ PAGE_ACTIVITY_SCRIPT = """
 
   return {
     readyState: document.readyState,
+    scannerState: document.documentElement.getAttribute(
+      'data-wappalyzer-scanner-state'
+    ),
     relevantCount,
     lastRelevantAge: lastRelevantAt ? now - lastRelevantAt : null,
     lastMutationAge: window.__wappalyzerLastMutationAt
@@ -381,7 +410,8 @@ def _detection_signature(detections):
 
 def _activity_signature(activity):
     return ":".join(
-        str(activity.get(key, "")) for key in ("readyState", "relevantCount", "mutationCount")
+        str(activity.get(key, ""))
+        for key in ("readyState", "scannerState", "relevantCount", "mutationCount")
     )
 
 
@@ -408,6 +438,7 @@ class BrowserDriver:
         self.timeout_ms = timeout_ms
         self.popup = None
         self.pending_cookies = []
+        self.healthy = True
 
     def add_cookie(self, cookie):
         self.pending_cookies.append(cookie)
@@ -431,6 +462,9 @@ class BrowserDriver:
         await self.context.add_cookies(cookies)
 
     async def reset(self):
+        if not self.healthy:
+            raise RuntimeError("Browser driver is unhealthy")
+
         failures = []
 
         try:
@@ -666,6 +700,9 @@ class DriverPool:
 
         try:
             yield driver
+        except asyncio.CancelledError:
+            await asyncio.shield(self._retire_and_replace(driver))
+            raise
         except Exception:
             await self._retire_and_replace(driver)
             raise
@@ -674,6 +711,10 @@ class DriverPool:
                 if driver in self.drivers:
                     self.drivers.remove(driver)
                 await driver.close()
+                return
+
+            if not driver.healthy:
+                await self._retire_and_replace(driver)
                 return
 
             try:
@@ -762,15 +803,19 @@ async def _get_detections(driver, target_url):
         },
     )
 
-    if not selected_tab:
-        return []
+    if isinstance(selected_tab, dict) and selected_tab.get("__error"):
+        raise RuntimeError(selected_tab["__error"])
 
-    detections = []
+    if not selected_tab:
+        raise RuntimeError(f"Unable to identify browser tab for {target_url}")
+
+    last_successful_detections = None
     last_signature = None
     last_activity_signature = None
     stable_polls = 0
+    completion_seen = False
     started_at = asyncio.get_running_loop().time()
-    min_wait = 2.0
+    min_wait = 0.5
     hard_max = max(1.0, driver.timeout_ms / 1000 - 1)
 
     while True:
@@ -784,12 +829,30 @@ async def _get_detections(driver, target_url):
 
         if isinstance(response, dict) and response.get("__error"):
             logger.warning("Wappalyzer extension error: %s", response["__error"])
-            response = []
+            stable_polls = 0
+        elif isinstance(response, list):
+            last_successful_detections = response
 
-        detections = response if isinstance(response, list) else []
+        detections = (
+            last_successful_detections
+            if last_successful_detections is not None
+            else []
+        )
         signature = _detection_signature(detections)
         activity = await _page_activity(driver.page)
         activity_signature = _activity_signature(activity)
+        scanner_state = activity.get("scannerState")
+
+        if scanner_state == "error":
+            raise RuntimeError("Wappalyzer content analysis failed")
+
+        if scanner_state == "complete" and not completion_seen:
+            completion_seen = True
+            stable_polls = 0
+            last_signature = signature
+            last_activity_signature = activity_signature
+            await asyncio.sleep(0.5)
+            continue
 
         if signature == last_signature and activity_signature == last_activity_signature:
             stable_polls += 1
@@ -802,15 +865,24 @@ async def _get_detections(driver, target_url):
         page_quiet = _page_quiet(activity)
         stable_enough = stable_polls >= 2 and elapsed >= min_wait
 
-        if stable_enough and page_quiet:
+        if completion_seen and stable_enough and page_quiet:
             break
 
         if elapsed >= hard_max:
+            if not completion_seen:
+                raise RuntimeError("Wappalyzer content analysis timed out")
+
+            if last_successful_detections is None:
+                raise RuntimeError("Wappalyzer extension returned no successful response")
+
             break
 
         await asyncio.sleep(0.5)
 
-    return detections
+    if last_successful_detections is None:
+        raise RuntimeError("Wappalyzer extension returned no successful response")
+
+    return last_successful_detections
 
 
 async def _clear_target_state(driver, page):
@@ -902,7 +974,11 @@ async def process_url(driver, url):
             driver.page = None
 
         if cleanup_failures:
-            raise RuntimeError("; ".join(cleanup_failures))
+            driver.healthy = False
+            logger.warning(
+                "Retiring browser driver after cleanup failure: %s",
+                "; ".join(cleanup_failures),
+            )
 
 
 def cookie_to_cookies(cookie):

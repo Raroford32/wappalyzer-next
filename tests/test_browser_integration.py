@@ -4,6 +4,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
 
+from wappalyzer.browser import analyzer as browser_analyzer
 from wappalyzer.scanner import Wappalyzer
 
 pytestmark = pytest.mark.skipif(
@@ -14,17 +15,27 @@ pytestmark = pytest.mark.skipif(
 
 class HonoHandler(BaseHTTPRequestHandler):
     def do_GET(self):
-        is_hono = self.path.startswith("/hono/")
-        body = (
-            b"<!doctype html><main>Hono integration fixture</main>"
-            if is_hono
-            else b"<!doctype html><main>Plain integration fixture</main>"
-        )
+        fixture = self.path.strip("/").split("/", 1)[0]
+        bodies = {
+            "hono": b"<!doctype html><main>Hono integration fixture</main>",
+            "plain": b"<!doctype html><main>Plain integration fixture</main>",
+            "delayed-js": (
+                b"<script>setTimeout(() => { window.React = "
+                b"{ version: '19.1.0' } }, 3500)</script>"
+            ),
+            "html": b"<span data-avatar='gravatar.com/avatar/example'></span>",
+            "dom-src": b"<img src='https://cdn.getyourguide.com/example.png'>",
+            "repaired-dom": (
+                b"<a href='https://www.influxmarketing.com'>"
+                b"<svg class='influx-footer-logo'></svg></a>"
+            ),
+        }
+        body = bodies.get(fixture, bodies["plain"])
         self.send_response(200)
         self.send_header("Content-Type", "text/html")
 
-        if is_hono:
-            self.send_header("X-Powered-By", "Hono")
+        if fixture == "hono":
+            self.send_header("X-Powered-By", "hOnO")
 
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
@@ -34,7 +45,12 @@ class HonoHandler(BaseHTTPRequestHandler):
         return
 
 
-def test_every_warmed_browser_detects_first_navigation():
+def test_every_warmed_browser_detects_complete_isolated_schema(monkeypatch):
+    monkeypatch.setattr(
+        browser_analyzer,
+        "BLOCKED_RESOURCE_TYPES",
+        frozenset({"font", "image", "media"}),
+    )
     server = ThreadingHTTPServer(("127.0.0.1", 0), HonoHandler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -45,6 +61,10 @@ def test_every_warmed_browser_detects_first_navigation():
         for fixture in ("hono", "plain")
         for index in range(worker_count)
     ]
+    urls.extend(
+        f"http://127.0.0.1:{port}/{fixture}/0"
+        for fixture in ("delayed-js", "html", "dom-src", "repaired-dom")
+    )
     errors = {}
 
     try:
@@ -63,3 +83,13 @@ def test_every_warmed_browser_detects_first_navigation():
     assert all(
         ("Hono" in technologies) == ("/hono/" in url) for url, technologies in results.items()
     )
+    expected = {
+        "delayed-js": "React",
+        "html": "Gravatar",
+        "dom-src": "GetYourGuide",
+        "repaired-dom": "Influx CMS",
+    }
+
+    for fixture, technology in expected.items():
+        url = next(url for url in urls if f"/{fixture}/" in url)
+        assert technology in results[url]

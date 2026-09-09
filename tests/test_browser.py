@@ -82,7 +82,7 @@ def test_process_url_uses_and_closes_a_fresh_page(monkeypatch):
     assert driver.page is None
 
 
-def test_cleanup_failure_invalidates_browser_driver(monkeypatch):
+def test_cleanup_failure_retires_driver_without_discarding_result(monkeypatch):
     driver = FakeDriver()
 
     async def no_stimulation(page):
@@ -98,9 +98,10 @@ def test_cleanup_failure_invalidates_browser_driver(monkeypatch):
     monkeypatch.setattr(analyzer, "_get_detections", detections)
     monkeypatch.setattr(analyzer, "_clear_target_state", failed_cleanup)
 
-    with pytest.raises(RuntimeError, match="storage remained"):
-        asyncio.run(analyzer.process_url(driver, "https://example.test"))
+    result = asyncio.run(analyzer.process_url(driver, "https://example.test"))
 
+    assert result == ("https://example.test", [])
+    assert not driver.healthy
     assert driver.context.pages_created[0].closed
     assert driver.page is None
 

@@ -39,7 +39,25 @@ INIT_BLOCK = re.compile(
 SCANNER_INIT = """  async init() {
     try {
       await Driver.loadTechnologies()
-      Driver.cache = createDriverCache()
+      const [hostnames, tabResults, tabRequests] = await Promise.all([
+        getCachedHostnames(),
+        getSessionOption('tabResults', {}),
+        getSessionOption('tabRequests', {}),
+      ])
+
+      Object.values(getRecord(hostnames)).forEach((cache) => {
+        cache.detections = deserializeDetections(cache.detections)
+      })
+      Object.values(getRecord(tabResults)).forEach((result) => {
+        result.detections = deserializeDetections(result.detections)
+      })
+
+      Driver.cache = createDriverCache({ hostnames, tabResults, tabRequests })
+
+      await Promise.all([
+        setCachedOption('tracking', false),
+        setCachedOption('showCached', false),
+      ])
     } catch (error) {
       Driver.error(error)
     } finally {
@@ -51,6 +69,13 @@ SCANNER_INIT = """  async init() {
   },
 
 """
+
+
+def replace_once(content, old, new, description):
+    if content.count(old) != 1:
+        raise RuntimeError(f"Failed to patch {description}")
+
+    return content.replace(old, new, 1)
 
 
 def patch_index_js(content):
@@ -65,6 +90,180 @@ def patch_index_js(content):
 
     if "https://www.wappalyzer.com/upgraded/" in content:
         raise RuntimeError("Failed to remove upgrade prompt from js/index.js")
+
+    content = replace_once(
+        content,
+        "{ name, selector, exists, text, property, attribute, value },",
+        "{ name, selector, exists, text, src, property, attribute, value },",
+        "DOM src result destructuring",
+    )
+    content = replace_once(
+        content,
+        """            if (typeof property !== 'undefined') {""",
+        """            if (typeof src !== 'undefined') {
+              return analyzeManyToMany(technology, 'dom.src', {
+                [selector]: [src],
+              })
+            }
+
+            if (typeof property !== 'undefined') {""",
+        "DOM src result analysis",
+    )
+
+    return content
+
+
+def patch_content_js(content):
+    content = replace_once(
+        content,
+        "const MAX_DOM_TEXT_LENGTH = 1000000",
+        "const MAX_DOM_TEXT_LENGTH = 1000000\nconst MAX_HTML_LENGTH = 2000000",
+        "HTML collection limit",
+    )
+    content = replace_once(
+        content,
+        "async function getDomDetections(_technologies) {",
+        """function repairSelector(selector) {
+  let repaired = selector
+
+  if (repaired.endsWith(']')) {
+    if ((repaired.match(/'/g) || []).length % 2) {
+      repaired = `${repaired.slice(0, -1)}']`
+    } else if ((repaired.match(/"/g) || []).length % 2) {
+      repaired = `${repaired.slice(0, -1)}"]`
+    }
+  }
+
+  const missingBrackets =
+    (repaired.match(/\\[/g) || []).length - (repaired.match(/\\]/g) || []).length
+
+  return missingBrackets > 0
+    ? `${repaired}${']'.repeat(missingBrackets)}`
+    : repaired
+}
+
+async function getDomDetections(_technologies) {""",
+        "DOM selector repair",
+    )
+    content = replace_once(
+        content,
+        """        try {
+          nodes = document.querySelectorAll(selector)
+        } catch (error) {
+          Content.driver('error', error)
+        }""",
+        """        try {
+          nodes = document.querySelectorAll(selector)
+        } catch (error) {
+          try {
+            nodes = document.querySelectorAll(repairSelector(selector))
+          } catch (repairedError) {
+            Content.driver('error', repairedError)
+          }
+        }""",
+        "DOM selector fallback",
+    )
+    content = replace_once(
+        content,
+        "for (const { exists, text, properties, attributes } of dom[selector]) {",
+        "for (const { exists, text, src, properties, attributes } of dom[selector]) {",
+        "DOM src rule collection",
+    )
+    content = replace_once(
+        content,
+        """          if (properties) {""",
+        """          if (src && node.src) {
+            const value = node.src
+
+            addDetection(name, `${name}|${selector}|src|${value}`, {
+              name,
+              selector,
+              src: value,
+            })
+          }
+
+          if (properties) {""",
+        "DOM src evidence",
+    )
+    content = replace_once(
+        content,
+        """  return {
+    text,
+    css: css.join('\\n'),
+    scripts,
+  }""",
+        """  return {
+    html: document.documentElement.outerHTML.slice(0, MAX_HTML_LENGTH),
+    text,
+    css: css.join('\\n'),
+    scripts,
+  }""",
+        "HTML evidence",
+    )
+    content = replace_once(
+        content,
+        """    await new Promise((resolve) => setTimeout(resolve, 1000))
+
+    try {""",
+        """    await new Promise((resolve) => setTimeout(resolve, 1000))
+    document.documentElement.setAttribute(
+      'data-wappalyzer-scanner-state',
+      'pending'
+    )
+
+    try {""",
+        "content completion start",
+    )
+    content = replace_once(
+        content,
+        """      await Content.driver('analyzeJs', [url, js])
+    } catch (error) {
+      Content.driver('error', error)""",
+        """      await Content.driver('analyzeJs', [url, js])
+      document.documentElement.setAttribute(
+        'data-wappalyzer-scanner-state',
+        'complete'
+      )
+    } catch (error) {
+      document.documentElement.setAttribute(
+        'data-wappalyzer-scanner-state',
+        'error'
+      )
+      Content.driver('error', error)""",
+        "content completion finish",
+    )
+
+    return content
+
+
+def patch_wappalyzer_js(content):
+    content = replace_once(
+        content,
+        """      headers: mm,
+      meta: mm,""",
+        """      headers: mm,
+      html: oo,
+      meta: mm,""",
+        "HTML relation",
+    )
+    content = replace_once(
+        content,
+        """        headers,
+        icon,""",
+        """        headers,
+        html,
+        icon,""",
+        "HTML technology destructuring",
+    )
+    content = replace_once(
+        content,
+        """        headers: transform(headers),
+        icon: icon || 'default.svg',""",
+        """        headers: transform(headers),
+        html: transform(html),
+        icon: icon || 'default.svg',""",
+        "HTML technology transform",
+    )
 
     return content
 
@@ -248,6 +447,46 @@ def write_chromium_extension_archive(extension_dir, archive_path):
                 )
 
 
+def publish_generated_files(output_dir, data_dir):
+    output_dir = Path(output_dir)
+    data_dir = Path(data_dir)
+    names = sorted(
+        path.name
+        for path in output_dir.iterdir()
+        if path.name != FINGERPRINT_LOCK.name
+    ) + [FINGERPRINT_LOCK.name]
+    published = []
+
+    try:
+        for name in names:
+            source = output_dir / name
+            destination = data_dir / name
+            backup = output_dir / f".{name}.backup"
+
+            if destination.exists():
+                os.replace(destination, backup)
+
+            try:
+                os.replace(source, destination)
+            except Exception:
+                if backup.exists():
+                    os.replace(backup, destination)
+                raise
+
+            published.append((destination, backup))
+    except Exception:
+        for destination, backup in reversed(published):
+            destination.unlink(missing_ok=True)
+
+            if backup.exists():
+                os.replace(backup, destination)
+
+        raise
+    else:
+        for _, backup in published:
+            backup.unlink(missing_ok=True)
+
+
 def main(accept_source_update=False):
     DATA_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -280,6 +519,16 @@ def main(accept_source_update=False):
         index_path = extract_dir / "js" / "index.js"
         index_path.write_text(
             patch_index_js(index_path.read_text(encoding="utf-8")),
+            encoding="utf-8",
+        )
+        content_path = extract_dir / "js" / "content.js"
+        content_path.write_text(
+            patch_content_js(content_path.read_text(encoding="utf-8")),
+            encoding="utf-8",
+        )
+        wappalyzer_path = extract_dir / "js" / "wappalyzer.js"
+        wappalyzer_path.write_text(
+            patch_wappalyzer_js(wappalyzer_path.read_text(encoding="utf-8")),
             encoding="utf-8",
         )
 
@@ -334,11 +583,10 @@ def main(accept_source_update=False):
             encoding="utf-8",
         )
 
+        publish_generated_files(output_dir, DATA_DIR)
+
         if source_sha256 != EXPECTED_SOURCE_SHA256:
             write_expected_source_sha256(source_sha256)
-
-        for output_path in sorted(output_dir.iterdir()):
-            os.replace(output_path, DATA_DIR / output_path.name)
 
 
 if __name__ == "__main__":
