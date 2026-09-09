@@ -48,6 +48,7 @@ class DirectResponseFetcher:
         tls,
         timeout,
         max_redirects=DEFAULT_MAX_REDIRECTS,
+        policy=None,
         session_factory=requests.Session,
         monotonic=time.monotonic,
     ):
@@ -67,11 +68,13 @@ class DirectResponseFetcher:
             raise TypeError("session_factory must be callable")
         if not callable(monotonic):
             raise TypeError("monotonic must be callable")
+        if policy is not None and not isinstance(policy, EgressPolicy):
+            raise TypeError("policy must be an EgressPolicy or None")
         self.endpoint = endpoint
         self.tls = tls
         self.timeout = float(timeout)
         self.max_redirects = max_redirects
-        self.policy = EgressPolicy((endpoint,))
+        self.policy = policy or EgressPolicy((endpoint,))
         self.session_factory = session_factory
         self.monotonic = monotonic
         self._limits = set()
