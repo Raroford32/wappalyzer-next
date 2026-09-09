@@ -20,7 +20,6 @@ from wappalyzer.core.requester import VERIFY_TLS
 from wappalyzer.core.utils import enrich_result
 from wappalyzer.evidence import RawDetection, StageEvidence
 from wappalyzer.evidence_limits import (
-    BROWSER_DOM_DETECTIONS_PER_TECH_LIMIT,
     BROWSER_DOM_TEXT_CHARACTER_LIMIT,
     BROWSER_HTML_CHARACTER_LIMIT,
     BROWSER_INLINE_SCRIPT_CHARACTER_LIMIT,
@@ -302,6 +301,8 @@ EVIDENCE_METRICS_SCRIPT = """
       (total, script) => total + script.length,
       0
     ),
+    domDetectionTruncated:
+      root?.getAttribute('data-wappalyzer-dom-truncated') === 'count',
   }
 }
 """
@@ -998,7 +999,13 @@ async def _get_evidence_metrics(page):
         for name in names
     ):
         return None
-    return {name: int(metrics[name]) for name in names}
+    dom_detection_truncated = metrics.get("domDetectionTruncated")
+    if not isinstance(dom_detection_truncated, bool):
+        return None
+    return {
+        **{name: int(metrics[name]) for name in names},
+        "domDetectionTruncated": dom_detection_truncated,
+    }
 
 
 async def _process_page(driver, url, *, raw):
@@ -1109,13 +1116,7 @@ def browser_evidence_truncations(detections, metrics, timed_out):
         if metrics["inlineScriptCharacters"] > BROWSER_INLINE_SCRIPT_CHARACTER_LIMIT:
             add("scripts", EvidenceLimit.BYTES)
 
-    dom_counts = {}
-    for detection in detections:
-        technology = detection.get("technology")
-        pattern_type = (detection.get("pattern") or {}).get("type", "")
-        if technology and pattern_type.split(".", 1)[0] == "dom":
-            dom_counts[technology] = dom_counts.get(technology, 0) + 1
-    if any(count >= BROWSER_DOM_DETECTIONS_PER_TECH_LIMIT for count in dom_counts.values()):
+    if metrics is not None and metrics["domDetectionTruncated"]:
         add("dom", EvidenceLimit.COUNT)
 
     limit_order = {limit: index for index, limit in enumerate(EvidenceLimit)}

@@ -167,6 +167,32 @@ def patch_content_js(content):
     )
     content = replace_once(
         content,
+        """  const addDetection = (name, key, detection) => {
+    if (
+      detectionKeys.has(key) ||
+      getDetectionCount(name) >= MAX_TECH_DETECTIONS
+    ) {
+      return false
+    }
+""",
+        """  const addDetection = (name, key, detection) => {
+    if (detectionKeys.has(key)) {
+      return false
+    }
+
+    if (getDetectionCount(name) >= MAX_TECH_DETECTIONS) {
+      document.documentElement.setAttribute(
+        'data-wappalyzer-dom-truncated',
+        'count'
+      )
+
+      return false
+    }
+""",
+        "DOM detection overflow accounting",
+    )
+    content = replace_once(
+        content,
         "async function getDomDetections(_technologies) {",
         """function repairSelector(selector) {
   let repaired = selector
