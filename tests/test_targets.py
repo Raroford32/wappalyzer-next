@@ -348,6 +348,4 @@ def test_record_sink_backpressure_prevents_eager_binary_input_consumption():
         ingest_targets(source, stop_after_first)
 
     assert source.reads == 1
-    assert [record.endpoint for record in records] == [
-        Endpoint(address="192.0.2.1", port=80)
-    ]
+    assert [record.endpoint for record in records] == [Endpoint(address="192.0.2.1", port=80)]
