@@ -288,7 +288,7 @@ def measure_recovery(
             "elapsed_seconds": round(resume_elapsed, 6),
             "interrupted_after": interrupt_after,
             "max_inflight_observed": stats.max_inflight_observed,
-            "projected_records": resumed_store.counts.projected_occurrences,
+            "projected_records": resumed_store.projection_state.next_sequence,
             "records": records,
             "records_per_second_after_resume": round(
                 (records - committed_before_resume) / resume_elapsed,
