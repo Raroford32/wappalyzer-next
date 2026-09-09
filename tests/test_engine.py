@@ -1,7 +1,7 @@
 import asyncio
 
 from wappalyzer.discovery import DiscoveryResult, DiscoveryState
-from wappalyzer.engine import ExhaustiveEndpointScanner
+from wappalyzer.engine import DirectScanRuntime, ExhaustiveEndpointScanner
 from wappalyzer.models import (
     Endpoint,
     FailureCode,
@@ -11,6 +11,7 @@ from wappalyzer.models import (
     TLSMetadata,
     TLSTrust,
 )
+from wappalyzer.resources import ResourceSnapshot
 
 
 def discovery(protocol, state, failure_code=None, trust=None):
@@ -136,3 +137,27 @@ def test_endpoint_scanner_fails_closed_on_duplicate_or_missing_discovery_results
         assert len(results) == 2
         assert all(result.status is ProtocolStatus.INDETERMINATE for result in results)
         assert all(result.error_codes == (FailureCode.WORKER_FAILURE,) for result in results)
+
+
+def test_direct_runtime_derives_bounded_pipeline_admission_from_resource_plan():
+    runtime = DirectScanRuntime(
+        workers=20,
+        resource_snapshot=ResourceSnapshot(
+            cpu_count=4,
+            memory_bytes=4 * 1024**3,
+            file_descriptors=512,
+            sockets=256,
+            processes=128,
+            shared_memory_bytes=2 * 1024**3,
+            temp_bytes=8 * 1024**3,
+            artifact_bytes=16 * 1024**3,
+        ),
+    )
+    try:
+        selected = runtime.resource_plan.selected
+        assert runtime.max_inflight == (selected.discovery + selected.static + selected.browser)
+        assert selected.discovery >= 1
+        assert selected.static >= 1
+        assert selected.browser >= 1
+    finally:
+        asyncio.run(runtime.aclose())
