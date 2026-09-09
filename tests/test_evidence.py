@@ -251,7 +251,7 @@ def test_empty_stage_identity_does_not_split_evidence_bearing_observation():
     browser = StageEvidence(
         name=StageName.BROWSER,
         status=StageStatus.SUCCESS,
-        response_identity=identity(content=b"different response"),
+        response_identity=identity(digest=DIGEST_B),
         detections=(raw("RuntimeTech", "js", "global-pattern"),),
     )
 

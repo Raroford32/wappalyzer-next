@@ -111,8 +111,8 @@ def test_complete_executor_preserves_completed_stage_when_peer_fails():
     executor.close()
 
     assert result.status is ProtocolStatus.PARTIAL
-    assert result.observation is ProtocolObservation.MULTI
-    assert result.technologies == ()
+    assert result.observation is ProtocolObservation.SINGLE
+    assert result.technologies[0].name == "Tech-robots"
     assert result.stages[0].technologies[0].name == "Tech-robots"
     assert result.stages[1].status is StageStatus.INDETERMINATE
     assert result.stages[1].error_codes == (FailureCode.SCAN_TIMEOUT,)
