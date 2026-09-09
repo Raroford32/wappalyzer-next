@@ -827,7 +827,9 @@ async def _get_detections(driver, target_url):
             },
         )
 
-        if isinstance(response, dict) and response.get("__error"):
+        response_failed = isinstance(response, dict) and response.get("__error")
+
+        if response_failed:
             logger.warning("Wappalyzer extension error: %s", response["__error"])
             stable_polls = 0
         elif isinstance(response, list):
@@ -850,7 +852,9 @@ async def _get_detections(driver, target_url):
             await asyncio.sleep(0.5)
             continue
 
-        if signature == last_signature and activity_signature == last_activity_signature:
+        if response_failed:
+            stable_polls = 0
+        elif signature == last_signature and activity_signature == last_activity_signature:
             stable_polls += 1
         else:
             stable_polls = 0

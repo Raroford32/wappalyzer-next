@@ -38,6 +38,48 @@ class FakeDriver:
         return None
 
 
+def test_detection_polling_keeps_last_success_after_transient_error(monkeypatch):
+    detections = [{"technology": "React"}]
+
+    class Popup:
+        url = "chrome-extension://example/html/popup.html"
+
+        def __init__(self):
+            self.poll = 0
+
+        def is_closed(self):
+            return False
+
+        async def evaluate(self, script, _arguments):
+            if script == analyzer.SELECT_TARGET_TAB_SCRIPT:
+                return {"id": 1, "url": "https://example.test"}
+
+            self.poll += 1
+
+            if self.poll == 1:
+                return {"__error": "service worker restarted"}
+
+            return detections
+
+    driver = FakeDriver()
+    driver.timeout_ms = 10_000
+    driver.popup = Popup()
+
+    async def activity(_page):
+        return {
+            "readyState": "complete",
+            "scannerState": "complete",
+            "lastRelevantAge": 2_000,
+            "lastMutationAge": 2_000,
+        }
+
+    monkeypatch.setattr(analyzer, "_page_activity", activity)
+
+    result = asyncio.run(analyzer._get_detections(driver, "https://example.test"))
+
+    assert result == detections
+
+
 def test_page_quiet_requires_complete_and_inactive_page():
     assert analyzer._page_quiet(
         {
