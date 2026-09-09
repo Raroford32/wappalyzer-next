@@ -320,14 +320,14 @@ def test_pipeline_propagates_self_cancelling_worker_and_interrupts_run(tmp_path)
     store.close()
 
 
-def test_pipeline_empty_run_closes_async_workers_and_reaches_publish_ready(tmp_path):
+def test_pipeline_empty_run_closes_sync_workers_and_reaches_publish_ready(tmp_path):
     store = prepared_store(tmp_path, 0)
     close_calls = 0
 
     async def scan(_endpoint):
         raise AssertionError("empty run claimed endpoint work")
 
-    async def close_workers():
+    def close_workers():
         nonlocal close_calls
         close_calls += 1
 
