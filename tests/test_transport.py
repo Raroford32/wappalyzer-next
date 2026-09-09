@@ -231,9 +231,7 @@ def test_insecure_verification_setting_is_request_scoped():
             FailureCode.DISCOVERY_TIMEOUT,
         ),
         (
-            requests.exceptions.SSLError(
-                ssl.SSLCertVerificationError(1, "raw-self-signed-secret")
-            ),
+            requests.exceptions.SSLError(ssl.SSLCertVerificationError(1, "raw-self-signed-secret")),
             TransportState.TLS_UNTRUSTED,
             FailureCode.TLS_UNTRUSTED,
         ),
@@ -301,8 +299,7 @@ def test_diagnostic_sanitizer_omits_sensitive_inputs_and_is_bounded_and_determin
     kwargs = {
         "code": FailureCode.UNREACHABLE,
         "url": (
-            "https://alice:password@example.test/path"
-            "?authorization=query-secret#fragment-secret"
+            "https://alice:password@example.test/path?authorization=query-secret#fragment-secret"
         ),
         "exception": RuntimeError("raw-exception-secret"),
         "headers": {
