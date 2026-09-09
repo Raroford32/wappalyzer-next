@@ -28,7 +28,7 @@ BROWSER_CHANNEL_PATTERNS = {
     "scripts": {"scripts": "matrix-scripts-positive"},
     "text": {"text": "matrix-text-positive"},
     "url": {"url": "/matrix-positive"},
-    "xhr": {"xhr": "^localhost$"},
+    "xhr": {"xhr": r"^127\.0\.0\.1$"},
 }
 
 
@@ -49,11 +49,6 @@ def build_matrix_extension(tmp_path):
     for name in tuple(members):
         if name.startswith("technologies/") and name.endswith(".json"):
             members[name] = b"{}"
-    members["js/index.js"] = members["js/index.js"].replace(
-        b"|localhost|",
-        b"|matrix-localhost-disabled|",
-        1,
-    )
     members["technologies/m.json"] = json.dumps(
         matrix_technologies(),
         separators=(",", ":"),
@@ -107,7 +102,7 @@ class HonoHandler(BaseHTTPRequestHandler):
                 <script>
                   // matrix-scripts-positive
                   window.matrixRuntime = { value: 'matrix-js-positive' };
-                  fetch(`http://localhost:${location.port}/matrix-xhr-positive`);
+                  fetch('/matrix-xhr-positive');
                 </script>
             """,
             "matrix-negative": b"""<!doctype html>
@@ -118,7 +113,7 @@ class HonoHandler(BaseHTTPRequestHandler):
                   matrix-header-positive matrix-meta-positive
                   matrix-scripts-positive
                   <a href="/matrix-positive">URL lookalike</a>
-                  <img src="http://localhost:MATRIX_PORT/matrix-image">
+                  <img src="/matrix-image">
                 </main>
                 <script>
                   const matrixRuntime = { value: 'matrix-js-positive' };
@@ -129,7 +124,6 @@ class HonoHandler(BaseHTTPRequestHandler):
             """,
         }
         body = bodies.get(fixture, bodies["plain"])
-        body = body.replace(b"MATRIX_PORT", str(self.server.server_port).encode())
         self.send_response(200)
         self.send_header("Content-Type", "text/html")
 
