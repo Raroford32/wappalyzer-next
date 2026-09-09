@@ -1,5 +1,7 @@
 import concurrent.futures
 import functools
+import hashlib
+import json
 import os
 import time
 from urllib.parse import urljoin, urlparse
@@ -11,13 +13,23 @@ from wappalyzer.analyzers.dom import compile_selector, match_dom
 from wappalyzer.core.config import tech_db
 from wappalyzer.core.matcher import (
     better_version,
+    combine_matches,
     compile_pattern,
     match,
     match_dict,
     parse_pattern,
 )
 from wappalyzer.core.requester import get_response
-from wappalyzer.core.utils import create_result
+from wappalyzer.evidence import RawDetection, StageEvidence, resolve_raw_detections
+from wappalyzer.models import (
+    CHANNEL_REGISTRY,
+    ChannelOwner,
+    EvidenceLimit,
+    EvidenceTruncation,
+    ResponseIdentity,
+    StageName,
+    StageStatus,
+)
 from wappalyzer.parsers.certIssuer import get_certIssuer
 from wappalyzer.parsers.css import get_css
 from wappalyzer.parsers.dns import get_dns
@@ -130,10 +142,30 @@ def prepare_matchers():
 class AssetBudget:
     def __init__(self, limit):
         self.remaining = max(0, limit)
+        self._truncations = {}
 
-    def claim(self, urls):
-        claimed = list(dict.fromkeys(urls))[: self.remaining]
+    @property
+    def truncations(self):
+        return {
+            channel: tuple(
+                sorted(limits, key=lambda limit: list(EvidenceLimit).index(limit))
+            )
+            for channel, limits in sorted(self._truncations.items())
+        }
+
+    def truncate(self, channel, limit):
+        if channel not in CHANNEL_REGISTRY:
+            raise ValueError(f"unknown evidence channel: {channel}")
+        if not isinstance(limit, EvidenceLimit):
+            raise TypeError("limit must be an EvidenceLimit")
+        self._truncations.setdefault(channel, set()).add(limit)
+
+    def claim(self, urls, channel=None):
+        unique = list(dict.fromkeys(urls))
+        claimed = unique[: self.remaining]
         self.remaining -= len(claimed)
+        if channel is not None and len(claimed) != len(unique):
+            self.truncate(channel, EvidenceLimit.COUNT)
         return claimed
 
 
@@ -172,8 +204,9 @@ def _fetch_assets(
     credential_origin,
     budget,
     asset_workers=None,
+    channel=None,
 ):
-    ordered_urls = budget.claim(urls)
+    ordered_urls = budget.claim(urls, channel=channel)
 
     if not ordered_urls:
         return {}
@@ -230,7 +263,7 @@ def _probe_responses(
 ):
     urls = {path: urljoin(base_url, path) for probes in PROBES.values() for path in probes}
     responses = {}
-    claimed_urls = set(budget.claim(urls.values()))
+    claimed_urls = set(budget.claim(urls.values(), channel="probe"))
     urls = {path: url for path, url in urls.items() if url in claimed_urls}
 
     if not urls:
@@ -296,23 +329,29 @@ def collect_evidence(
     if scan_type != "fast":
         remaining = _remaining_seconds(deadline)
 
-        if script_sources and remaining > 0:
-            fetched_scripts = _fetch_assets(
-                script_sources,
-                remaining,
-                cookie,
-                response.url,
-                asset_budget,
-                asset_workers,
-            )
-            scripts.extend(
-                fetched_scripts[url] for url in script_sources if fetched_scripts.get(url)
-            )
+        if script_sources:
+            if remaining > 0:
+                fetched_scripts = _fetch_assets(
+                    script_sources,
+                    remaining,
+                    cookie,
+                    response.url,
+                    asset_budget,
+                    asset_workers,
+                    "scripts",
+                )
+                scripts.extend(
+                    fetched_scripts[url]
+                    for url in script_sources
+                    if fetched_scripts.get(url)
+                )
+            else:
+                asset_budget.truncate("scripts", EvidenceLimit.TIMER)
 
         css_urls = _stylesheet_urls(response.url, soup)
         remaining = _remaining_seconds(deadline)
 
-        if remaining > 0:
+        if css_urls and remaining > 0:
             css_sources.extend(
                 _fetch_assets(
                     css_urls,
@@ -321,8 +360,11 @@ def collect_evidence(
                     response.url,
                     asset_budget,
                     asset_workers,
+                    "css",
                 ).values()
             )
+        elif css_urls:
+            asset_budget.truncate("css", EvidenceLimit.TIMER)
 
     dns = {}
     meta = get_meta(soup)
@@ -383,6 +425,11 @@ def collect_evidence(
                     cert_issuer = value
                 elif field == "probes":
                     probes = value
+    elif scan_type != "fast":
+        for channel in ("certIssuer", "probe", "robots"):
+            asset_budget.truncate(channel, EvidenceLimit.TIMER)
+        if domain:
+            asset_budget.truncate("dns", EvidenceLimit.TIMER)
 
     return {
         "certIssuer": cert_issuer,
@@ -401,6 +448,7 @@ def collect_evidence(
         "text": soup.get_text(" ", strip=True),
         "url": response.url,
         "xhr": [],
+        "_truncations": asset_budget.truncations,
     }
 
 
@@ -423,6 +471,167 @@ def _add_candidate(result, tech_name, candidate):
     current["version"] = better_version(version, current["version"])
 
 
+def _stable_digest(value):
+    payload = json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    ).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _raw_detection(technology, channel, pattern, evidence, candidate):
+    matched, version, confidence = candidate
+    if not matched or confidence <= 0:
+        return None
+    return RawDetection(
+        technology=technology,
+        channel=channel,
+        source_key=_stable_digest(pattern),
+        evidence_sha256=_stable_digest(evidence),
+        version=version or "",
+        confidence=min(int(confidence), 100),
+    )
+
+
+def collect_raw_detections(evidence, owner=None):
+    if owner is not None and not isinstance(owner, ChannelOwner):
+        raise TypeError("owner must be a ChannelOwner or None")
+    selected = {
+        channel
+        for channel in DETECTION_FIELDS
+        if owner is None or CHANNEL_REGISTRY[channel].owner is owner
+    }
+    detections = []
+
+    for channel in sorted(selected):
+        evidence_key = "probes" if channel == "probe" else channel
+        value = evidence.get(evidence_key)
+        if not value and channel != "dom":
+            continue
+
+        if channel == "dom":
+            for technology, pattern in DETECTOR_PLAN[channel]:
+                detection = _raw_detection(
+                    technology,
+                    channel,
+                    pattern,
+                    value,
+                    match_dom(pattern, value),
+                )
+                if detection is not None:
+                    detections.append(detection)
+            continue
+
+        if channel in DICT_PATTERN_FIELDS:
+            for technology, pattern in DETECTOR_PLAN[channel]:
+                detection = _raw_detection(
+                    technology,
+                    channel,
+                    pattern,
+                    value,
+                    match_dict(
+                        pattern,
+                        value,
+                        case_insensitive_keys=True,
+                    ),
+                )
+                if detection is not None:
+                    detections.append(detection)
+            continue
+
+        if channel == "probe":
+            for technology, probes in DETECTOR_PLAN[channel]:
+                aggregate = (False, "", 0)
+                for path, pattern in probes.items():
+                    probe_ok, probe_text = value.get(path, (False, ""))
+                    if not probe_ok or (not probe_text and pattern != ""):
+                        continue
+                    candidate = (
+                        (True, "", 100)
+                        if pattern == "" and probe_text
+                        else match(pattern, probe_text)
+                    )
+                    aggregate = combine_matches(aggregate, candidate)
+                detection = _raw_detection(
+                    technology,
+                    channel,
+                    probes,
+                    value,
+                    aggregate,
+                )
+                if detection is not None:
+                    detections.append(detection)
+            continue
+
+        for technology, pattern in DETECTOR_PLAN[channel]:
+            detection = _raw_detection(
+                technology,
+                channel,
+                pattern,
+                value,
+                match(pattern, value),
+            )
+            if detection is not None:
+                detections.append(detection)
+
+    return tuple(
+        sorted(
+            detections,
+            key=lambda item: (
+                item.technology,
+                item.channel,
+                item.source_key,
+            ),
+        )
+    )
+
+
+def analyze_static_stage(
+    response,
+    scan_type="balanced",
+    cookie=None,
+    timeout=30,
+    deadline=None,
+    asset_workers=None,
+):
+    prepare_matchers()
+    evidence = collect_evidence(
+        response,
+        scan_type,
+        cookie=cookie,
+        timeout=timeout,
+        deadline=deadline,
+        asset_workers=asset_workers,
+    )
+    detections = collect_raw_detections(evidence, owner=ChannelOwner.STATIC)
+    truncations = tuple(
+        EvidenceTruncation(channel=channel, limits=limits)
+        for channel, limits in evidence["_truncations"].items()
+        if CHANNEL_REGISTRY[channel].owner is ChannelOwner.STATIC
+    )
+    status = (
+        StageStatus.PARTIAL
+        if truncations
+        else StageStatus.SUCCESS
+        if detections
+        else StageStatus.SUCCESS_EMPTY
+    )
+    return StageEvidence(
+        name=StageName.STATIC,
+        status=status,
+        response_identity=ResponseIdentity(
+            effective_url=response.url,
+            http_status=response.status_code,
+            content_sha256=hashlib.sha256(response.content).hexdigest(),
+        ),
+        detections=detections,
+        truncations=truncations,
+    )
+
+
 def analyze_from_response(
     response,
     scan_type,
@@ -441,63 +650,17 @@ def analyze_from_response(
         asset_workers=asset_workers,
     )
 
-    result = {}
-
-    if evidence["certIssuer"]:
-        for tech_name, pattern in DETECTOR_PLAN["certIssuer"]:
-            _add_candidate(
-                result,
-                tech_name,
-                match(pattern, evidence["certIssuer"]),
-            )
-
-    for field in ("css", "html", "robots", "scriptSrc", "scripts", "text", "url", "xhr"):
-        if evidence[field]:
-            for tech_name, pattern in DETECTOR_PLAN[field]:
-                _add_candidate(
-                    result,
-                    tech_name,
-                    match(pattern, evidence[field]),
-                )
-
-    for tech_name, pattern in DETECTOR_PLAN["dom"]:
-        _add_candidate(
-            result,
-            tech_name,
-            match_dom(pattern, evidence["dom"]),
+    return {
+        technology.name: {
+            "version": technology.version,
+            "confidence": technology.confidence,
+            "categories": list(technology.categories),
+            "groups": list(technology.groups),
+        }
+        for technology in resolve_raw_detections(
+            collect_raw_detections(evidence)
         )
-
-    for field in ("cookies", "dns", "headers", "meta"):
-        if evidence[field]:
-            for tech_name, pattern in DETECTOR_PLAN[field]:
-                _add_candidate(
-                    result,
-                    tech_name,
-                    match_dict(
-                        pattern,
-                        evidence[field],
-                        case_insensitive_keys=True,
-                    ),
-                )
-
-    if evidence["probes"]:
-        for tech_name, probes in DETECTOR_PLAN["probe"]:
-            for path, pattern in probes.items():
-                probe_ok, probe_text = evidence["probes"].get(
-                    path,
-                    (False, ""),
-                )
-
-                if probe_ok and (probe_text or pattern == ""):
-                    _add_candidate(
-                        result,
-                        tech_name,
-                        (True, "", 100)
-                        if pattern == "" and probe_text
-                        else match(pattern, probe_text),
-                    )
-
-    return create_result(result)
+    }
 
 
 def http_scan(
