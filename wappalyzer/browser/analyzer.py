@@ -615,11 +615,23 @@ def _browser_route_allows(url, target_origin):
 
 
 class DriverPool:
-    def __init__(self, size=3, max_retries=3, timeout=30, strict_tls=False):
+    def __init__(
+        self,
+        size=3,
+        max_retries=3,
+        timeout=30,
+        strict_tls=False,
+        blocked_resource_types=None,
+    ):
         self.target_size = size
         self.max_retries = max_retries
         self.timeout = timeout
         self.strict_tls = strict_tls
+        self.blocked_resource_types = (
+            BLOCKED_RESOURCE_TYPES
+            if blocked_resource_types is None
+            else frozenset(blocked_resource_types)
+        )
         self.queue = asyncio.Queue()
         self.closed = False
         self.playwright = None
@@ -714,7 +726,7 @@ class DriverPool:
                 context.set_default_navigation_timeout(timeout_ms)
 
                 async def route_handler(route):
-                    if route.request.resource_type in BLOCKED_RESOURCE_TYPES:
+                    if route.request.resource_type in self.blocked_resource_types:
                         await route.abort()
                     elif not _browser_route_allows(
                         route.request.url,

@@ -159,5 +159,6 @@ def test_direct_runtime_derives_bounded_pipeline_admission_from_resource_plan():
         assert selected.discovery >= 1
         assert selected.static >= 1
         assert selected.browser >= 1
+        assert runtime.browser_backend.blocked_resource_types == ()
     finally:
         asyncio.run(runtime.aclose())

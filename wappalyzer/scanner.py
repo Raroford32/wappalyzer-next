@@ -181,10 +181,17 @@ class _LoopRunner:
 
 
 class _FullScanBackend:
-    def __init__(self, workers=1, timeout=30, strict_tls=False):
+    def __init__(
+        self,
+        workers=1,
+        timeout=30,
+        strict_tls=False,
+        blocked_resource_types=None,
+    ):
         self.workers = workers
         self.timeout = timeout
         self.strict_tls = strict_tls
+        self.blocked_resource_types = blocked_resource_types
         self.pool = None
         self._pool_lock = asyncio.Lock()
 
@@ -203,6 +210,7 @@ class _FullScanBackend:
                 size=size,
                 timeout=self.timeout,
                 strict_tls=self.strict_tls,
+                blocked_resource_types=self.blocked_resource_types,
             )
 
             try:

@@ -210,6 +210,7 @@ class DirectScanRuntime:
             workers=plan.selected.browser,
             timeout=timeout,
             strict_tls=True,
+            blocked_resource_types=(),
         )
         self.complete_executor = CompleteScanExecutor(
             browser_runner=self.browser_backend.analyze_evidence,

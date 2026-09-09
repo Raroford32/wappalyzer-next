@@ -88,6 +88,7 @@ def main(argv=None):
     print(
         json.dumps(
             {
+                "accepted_endpoints": result.accepted_endpoints,
                 "canonical": str(result.canonical_path),
                 "generation": str(result.generation_path),
                 "manifest": str(result.manifest_path),
@@ -98,6 +99,9 @@ def main(argv=None):
             separators=(",", ":"),
         )
     )
+    if result.accepted_endpoints == 0:
+        print("scan completed with no valid endpoints", file=sys.stderr)
+        return 2
     return 0
 
 

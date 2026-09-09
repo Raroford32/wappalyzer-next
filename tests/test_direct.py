@@ -68,6 +68,7 @@ def test_direct_run_accepts_only_target_file_and_publishes_complete_artifacts(tm
     )
 
     assert result.status is RunStatus.COMPLETE
+    assert result.accepted_endpoints == 2
     assert result.canonical_path.is_file()
     assert result.manifest_path.is_file()
     assert len(FakeRuntime.instances) == 1

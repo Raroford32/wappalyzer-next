@@ -36,6 +36,7 @@ class DirectRunResult:
     manifest_path: Path
     status: RunStatus
     resumed: bool
+    accepted_endpoints: int
 
 
 def _regular_file_sha256(path):
@@ -207,6 +208,7 @@ async def run_direct_scan(
             manifest_path=manifest_path,
             status=store.status,
             resumed=generation.resumed,
+            accepted_endpoints=store.counts.endpoint_work,
         )
 
 
