@@ -4,6 +4,7 @@ import zipfile
 import pytest
 
 from wappalyzer.browser import analyzer
+from wappalyzer.evidence_limits import BROWSER_DOM_DETECTIONS_PER_TECH_LIMIT
 from wappalyzer.models import ChannelOwner, EvidenceLimit, StageStatus
 
 
@@ -231,7 +232,7 @@ def test_browser_stage_reports_every_configured_collection_limit(monkeypatch):
                     "confidence": 100,
                 },
             }
-            for _index in range(analyzer.BROWSER_DOM_DETECTIONS_PER_TECH_LIMIT)
+            for _index in range(BROWSER_DOM_DETECTIONS_PER_TECH_LIMIT)
         ]
 
     async def metrics(_page):
@@ -271,7 +272,7 @@ def test_exact_dom_detection_limit_is_not_assumed_truncated_without_overflow_fla
             "technology": "DenseDom",
             "pattern": {"type": "dom.exists"},
         }
-        for _index in range(analyzer.BROWSER_DOM_DETECTIONS_PER_TECH_LIMIT)
+        for _index in range(BROWSER_DOM_DETECTIONS_PER_TECH_LIMIT)
     ]
     metrics = {
         "htmlCharacters": 0,
