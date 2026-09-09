@@ -36,7 +36,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: pip
       - run: python -m pip install --upgrade --editable . pytest pytest-cov
-      - run: pytest --cov --cov-report=term-missing --cov-report=xml --cov-fail-under=70
+      - run: pytest --cov --cov-report=term-missing --cov-report=xml --cov-fail-under=85
       - uses: actions/upload-artifact@v4
         if: matrix.python-version == '3.12'
         with:
@@ -51,19 +51,50 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-      - run: python -m pip install --upgrade --editable . pytest
-      - name: Verify data, channel, schema, and lifecycle matrices
+      - run: python -m pip install --upgrade --editable . coverage pytest
+      - name: Enforce complete orchestration statement and branch coverage
+        run: |
+          python -m coverage erase
+          python -m coverage run --branch -m pytest \
+            tests/test_models.py \
+            tests/test_evidence.py \
+            tests/test_evidence_limits.py \
+            tests/test_targets.py \
+            tests/test_resources.py \
+            tests/test_runstore.py \
+            tests/test_runstore_integrity.py \
+            tests/test_stream_output.py \
+            tests/test_output_durability.py \
+            tests/test_transport.py \
+            tests/test_direct_requester.py \
+            tests/test_discovery.py \
+            tests/test_regex_workers.py \
+            tests/test_engine.py \
+            tests/test_direct.py \
+            tests/test_pipeline.py \
+            tests/test_cli.py
+          python -m coverage report --fail-under=100 --no-skip-covered -m \
+            wappalyzer/__main__.py \
+            wappalyzer/core/direct_requester.py \
+            wappalyzer/core/regex_workers.py \
+            wappalyzer/core/transport.py \
+            wappalyzer/direct.py \
+            wappalyzer/discovery.py \
+            wappalyzer/engine.py \
+            wappalyzer/evidence.py \
+            wappalyzer/evidence_limits.py \
+            wappalyzer/models.py \
+            wappalyzer/output.py \
+            wappalyzer/pipeline.py \
+            wappalyzer/resources.py \
+            wappalyzer/runstore.py \
+            wappalyzer/targets.py
+      - name: Verify data, channel, schema, and update matrices
         run: >-
           pytest
           tests/test_channel_matrix.py
           tests/test_data_integrity.py
-          tests/test_models.py
           tests/test_schema.py
-          tests/test_targets.py
-          tests/test_runstore.py
-          tests/test_stream_output.py
-          tests/test_pipeline.py
-          tests/test_resources.py
           tests/test_update.py
 
   browser:
