@@ -218,6 +218,15 @@ const Driver = {
     return tabId
   },
 
+  async onXhrRequestComplete(request) {
+    setTimeout(() => {
+      return request
+    }, 1000)
+  },
+
+  /**
+   * Get detections
+   */
   async getDetectionsForTab(tab) {
     return tab
   },
@@ -241,6 +250,7 @@ const Driver = {
     assert "getSessionOption('tabResults', {})" in patched
     assert "typeof src !== 'undefined'" in patched
     assert "getRawDetectionsForTab(tab)" in patched
+    assert "}, 0)" in patched
 
 
 def test_upstream_source_hash_is_pinned_to_bundled_generation():
@@ -310,6 +320,12 @@ def test_generated_bundle_has_complete_scanner_patches():
     assert "setCachedOption('tracking', false)" in index
     assert "setCachedOption('showCached', false)" in index
     assert "getRawDetectionsForTab(tab)" in index
+    assert "async onXhrRequestComplete(request)" in index
+    xhr_handler = index.split("async onXhrRequestComplete(request)", 1)[1].split(
+        "\n  },\n\n  /**",
+        1,
+    )[0]
+    assert "}, 0)" in xhr_handler
     assert "data-wappalyzer-scanner-state" in content
     assert "data-wappalyzer-dom-truncated" in content
     assert "return !!(html || text || css || scripts.length)" in content

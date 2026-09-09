@@ -411,6 +411,25 @@ def patch_raw_tab_detections(content):
     )
 
 
+def patch_xhr_settlement(content):
+    start_marker = "  async onXhrRequestComplete(request) {"
+    end_marker = "\n  },\n\n  /**"
+    start = content.find(start_marker)
+    if start < 0:
+        raise RuntimeError("Failed to find XHR completion handler")
+    end = content.find(end_marker, start)
+    if end < 0:
+        raise RuntimeError("Failed to bound XHR completion handler")
+    handler = content[start:end]
+    patched_handler = replace_once(
+        handler,
+        "      }, 1000)",
+        "      }, 0)",
+        "XHR scanner settlement",
+    )
+    return content[:start] + patched_handler + content[end:]
+
+
 def patch_index_js(content):
     content = PROMPT_BLOCK.sub("", content, count=1)
     content, replacements = INIT_BLOCK.subn(SCANNER_INIT, content, count=1)
@@ -442,6 +461,7 @@ def patch_index_js(content):
             if (typeof property !== 'undefined') {""",
         "DOM src result analysis",
     )
+    content = patch_xhr_settlement(content)
     content = patch_raw_tab_detections(content)
 
     return content
