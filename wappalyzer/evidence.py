@@ -189,7 +189,10 @@ def _protocol_status(stages, technologies):
     statuses = {stage.status for stage in stages}
     if StageStatus.PARTIAL in statuses or StageStatus.INDETERMINATE in statuses:
         return ProtocolStatus.PARTIAL
-    return ProtocolStatus.SUCCESS if technologies else ProtocolStatus.SUCCESS_EMPTY
+    has_detections = bool(technologies) or any(
+        stage.detections for stage in stages
+    )
+    return ProtocolStatus.SUCCESS if has_detections else ProtocolStatus.SUCCESS_EMPTY
 
 
 def merge_stage_evidence(
