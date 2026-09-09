@@ -410,23 +410,29 @@ def test_empty_chunks_are_ignored_without_ending_the_stream():
 
 
 @pytest.mark.parametrize(
-    "chunks",
+    ("chunks", "expected_endpoint"),
     [
         pytest.param(
             (b"192.0.2.1:80\r", b"x\n"),
+            None,
             id="carriage-return-before-non-newline",
         ),
         pytest.param(
             (b"192.0.2.1:80\r",),
+            Endpoint("192.0.2.1", 80),
             id="unterminated-carriage-return",
         ),
         pytest.param(
             (b" " * MAX_TARGET_LINE_BYTES + b"\r", b"x\n"),
+            None,
             id="full-retention-buffer",
         ),
     ],
 )
-def test_carriage_returns_are_retained_unless_they_terminate_a_line(chunks):
+def test_split_and_unterminated_carriage_returns_follow_line_classification(
+    chunks,
+    expected_endpoint,
+):
     records = []
     raw = b"".join(chunks)
 
@@ -438,8 +444,9 @@ def test_carriage_returns_are_retained_unless_they_terminate_a_line(chunks):
             line_number=1,
             byte_offset=0,
             line_digest=_sha256(raw),
-            endpoint=None,
+            endpoint=expected_endpoint,
         )
     ]
     assert summary.physical_line_count == 1
-    assert summary.invalid_occurrence_count == 1
+    assert summary.valid_occurrence_count == int(expected_endpoint is not None)
+    assert summary.invalid_occurrence_count == int(expected_endpoint is None)
