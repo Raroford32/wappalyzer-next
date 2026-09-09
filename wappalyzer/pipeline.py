@@ -200,6 +200,10 @@ class BoundedScanPipeline:
         except BaseException:
             await self._cancel_tasks((*tasks, *self._active_scan_tasks))
             self._active_scan_tasks.clear()
+            try:
+                await self._close_workers()
+            except Exception:
+                pass
             if self.store.status not in {
                 RunStatus.INTERRUPTED,
                 RunStatus.PUBLISH_READY,

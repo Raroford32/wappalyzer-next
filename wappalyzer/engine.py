@@ -169,6 +169,7 @@ class DirectScanRuntime:
         resource_snapshot=None,
         resource_profile=None,
         transport_limits=None,
+        artifact_required_bytes=0,
     ):
         if workers is not None and (
             isinstance(workers, bool) or not isinstance(workers, int) or workers < 1
@@ -183,7 +184,12 @@ class DirectScanRuntime:
         if not isinstance(profile, ResourceProfile):
             raise TypeError("resource_profile must be a ResourceProfile or None")
         requested = WorkerCounts(workers, workers, workers) if workers is not None else None
-        plan = autosize(snapshot, profile, requested=requested)
+        plan = autosize(
+            snapshot,
+            profile,
+            requested=requested,
+            artifact_required_bytes=artifact_required_bytes,
+        )
         if (
             not plan.can_run
             or plan.selected.discovery < 1
