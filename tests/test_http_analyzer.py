@@ -4,7 +4,7 @@ from requests.cookies import cookiejar_from_dict
 from requests.structures import CaseInsensitiveDict
 
 from wappalyzer.core import analyzer, utils
-from wappalyzer.core.regex_workers import RegexTimeoutError
+from wappalyzer.core.regex_workers import RegexTimeoutError, RegexWorkerPool
 from wappalyzer.models import (
     ChannelOwner,
     EvidenceLimit,
@@ -189,6 +189,18 @@ def test_static_stage_delegates_matching_to_isolated_worker_pool():
     )
 
     assert calls == [(analyzer.collect_raw_detections, ChannelOwner.STATIC, 7)]
+    assert result.status is StageStatus.SUCCESS_EMPTY
+
+
+def test_static_stage_evidence_crosses_spawn_process_boundary():
+    with RegexWorkerPool(workers=1, wall_timeout=5) as pool:
+        result = analyzer.analyze_static_stage(
+            response(),
+            scan_type="fast",
+            timeout=5,
+            regex_pool=pool,
+        )
+
     assert result.status is StageStatus.SUCCESS_EMPTY
 
 
