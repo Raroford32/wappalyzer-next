@@ -270,13 +270,6 @@ def test_browser_stage_reports_every_configured_collection_limit(monkeypatch):
 
 
 def test_exact_dom_detection_limit_is_not_assumed_truncated_without_overflow_flag():
-    detections = [
-        {
-            "technology": "DenseDom",
-            "pattern": {"type": "dom.exists"},
-        }
-        for _index in range(BROWSER_DOM_DETECTIONS_PER_TECH_LIMIT)
-    ]
     metrics = {
         "htmlCharacters": 0,
         "textCharacters": 0,
@@ -285,7 +278,7 @@ def test_exact_dom_detection_limit_is_not_assumed_truncated_without_overflow_fla
         "domDetectionTruncated": False,
     }
 
-    assert analyzer.browser_evidence_truncations(detections, metrics, False) == ()
+    assert analyzer.browser_evidence_truncations(metrics, False) == ()
 
 
 def test_untrusted_tls_exception_is_scoped_and_cross_authority_https_is_blocked(
@@ -384,7 +377,6 @@ def test_policy_block_is_reported_for_every_browser_owned_channel():
         "domDetectionTruncated": False,
     }
     truncations = analyzer.browser_evidence_truncations(
-        [],
         metrics,
         False,
         policy_blocked=True,

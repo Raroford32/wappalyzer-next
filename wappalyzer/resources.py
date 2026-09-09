@@ -2,7 +2,7 @@ import os
 import resource
 import threading
 from concurrent.futures import CancelledError
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
@@ -533,19 +533,24 @@ class SystemResourceProbe:
     def controller_pairs(self, maximum, current):
         pairs = []
         for directory in self._controller_directories(maximum):
-            maximum_path = directory / maximum
-            if not maximum_path.exists():
-                maximum_path = directory / self._v1_name(maximum)
-            if not maximum_path.exists():
-                continue
             try:
-                maximum_value = maximum_path.read_text(encoding="utf-8").strip()
-                current_path = directory / current
-                if not current_path.exists():
-                    current_path = directory / self._v1_name(current)
-                current_value = current_path.read_text(encoding="utf-8").strip()
+                maximum_value = (directory / maximum).read_text(encoding="utf-8").strip()
             except OSError:
-                current_value = None
+                try:
+                    maximum_value = (
+                        (directory / self._v1_name(maximum)).read_text(encoding="utf-8").strip()
+                    )
+                except OSError:
+                    continue
+            try:
+                current_value = (directory / current).read_text(encoding="utf-8").strip()
+            except OSError:
+                try:
+                    current_value = (
+                        (directory / self._v1_name(current)).read_text(encoding="utf-8").strip()
+                    )
+                except OSError:
+                    current_value = None
             if maximum == "memory.max":
                 parsed_maximum = _parse_controller_integer(maximum_value)
                 if maximum_value == "-1" or (
@@ -935,7 +940,6 @@ class ResourceLease:
 class _Waiter:
     request: ResourceRequest
     cancel_event: Optional[object] = None
-    marker: object = field(default_factory=object)
 
 
 class ResourceBroker:

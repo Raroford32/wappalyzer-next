@@ -6,6 +6,7 @@ import sqlite3
 import stat
 import time
 import uuid
+from collections import OrderedDict
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, fields
 from pathlib import Path
@@ -48,6 +49,9 @@ from wappalyzer.models import (
     aggregate_occurrence_status,
     canonical_json_bytes,
 )
+from wappalyzer.models import (
+    _protocol_document as _canonical_protocol_document,
+)
 from wappalyzer.targets import TargetFileSummary, ingest_targets
 
 LEDGER_SCHEMA_VERSION = 1
@@ -57,6 +61,7 @@ _SQLITE_TIMEOUT_SECONDS = 5.0
 _BUSY_TIMEOUT_MILLISECONDS = 5000
 _WAL_AUTOCHECKPOINT_PAGES = 1000
 _HASH_CHUNK_BYTES = 64 * 1024
+_VERIFY_RESULT_CACHE_SIZE = 256
 _PROTOCOL_RANK = {protocol: index for index, protocol in enumerate(PROTOCOL_ORDER)}
 
 _SCHEMA = """
@@ -328,97 +333,9 @@ def _identity_matches(
 
 
 def _protocol_document(result: ProtocolResult) -> Dict[str, object]:
-    failure_rank = {code: index for index, code in enumerate(FailureCode)}
-    stage_rank = {stage: index for index, stage in enumerate(StageName)}
-    evidence_limit_rank = {limit: index for index, limit in enumerate(EvidenceLimit)}
-
-    def technology_document(technology):
-        return {
-            "name": technology.name,
-            "version": technology.version,
-            "confidence": technology.confidence,
-            "categories": sorted(set(technology.categories)),
-            "groups": sorted(set(technology.groups)),
-        }
-
-    return {
-        "protocol": result.protocol.value,
-        "status": result.status.value,
-        "requested_url": result.requested_url,
-        "effective_url": result.effective_url,
-        "http_status": result.http_status,
-        "tls": {
-            "present": result.tls.present,
-            "trust": result.tls.trust.value,
-            "certificate_sha256": result.tls.certificate_sha256,
-        },
-        "observation": result.observation.value,
-        "stages": [
-            {
-                "name": stage.name.value,
-                "status": stage.status.value,
-                "error_codes": [
-                    code.value
-                    for code in sorted(set(stage.error_codes), key=failure_rank.__getitem__)
-                ],
-                "response_identity": (
-                    {
-                        "effective_url": stage.response_identity.effective_url,
-                        "http_status": stage.response_identity.http_status,
-                        "content_sha256": stage.response_identity.content_sha256,
-                    }
-                    if stage.response_identity is not None
-                    else None
-                ),
-                "technologies": [
-                    technology_document(technology)
-                    for technology in sorted(
-                        stage.technologies,
-                        key=lambda item: (
-                            item.name,
-                            item.version,
-                            item.confidence,
-                            item.categories,
-                            item.groups,
-                        ),
-                    )
-                ],
-                "truncations": [
-                    {
-                        "channel": truncation.channel,
-                        "limits": [
-                            limit.value
-                            for limit in sorted(
-                                truncation.limits,
-                                key=evidence_limit_rank.__getitem__,
-                            )
-                        ],
-                    }
-                    for truncation in sorted(
-                        stage.truncations,
-                        key=lambda item: item.channel,
-                    )
-                ],
-            }
-            for stage in sorted(result.stages, key=lambda item: stage_rank[item.name])
-        ],
-        "technologies": [
-            technology_document(technology)
-            for technology in sorted(
-                result.technologies,
-                key=lambda item: (
-                    item.name,
-                    item.version,
-                    item.confidence,
-                    item.categories,
-                    item.groups,
-                ),
-            )
-        ],
-        "error_codes": [
-            code.value for code in sorted(set(result.error_codes), key=failure_rank.__getitem__)
-        ],
-    }
+    document = _canonical_protocol_document(result)
+    document["tls"]["certificate_sha256"] = result.tls.certificate_sha256
+    return document
 
 
 def _protocol_from_document(document: object) -> ProtocolResult:
@@ -479,14 +396,7 @@ def _protocol_from_document(document: object) -> ProtocolResult:
                 )
             )
         technologies = tuple(
-            Technology(
-                name=technology["name"],
-                version=technology["version"],
-                confidence=technology["confidence"],
-                categories=tuple(technology["categories"]),
-                groups=tuple(technology["groups"]),
-            )
-            for technology in technologies_document
+            technology_from_document(technology) for technology in technologies_document
         )
         return ProtocolResult(
             protocol=Protocol(document["protocol"]),
@@ -495,7 +405,9 @@ def _protocol_from_document(document: object) -> ProtocolResult:
             effective_url=document["effective_url"],
             http_status=document["http_status"],
             tls=tls,
-            observation=ProtocolObservation(document.get("observation", "single_observation")),
+            observation=ProtocolObservation(
+                document.get("observation", ProtocolObservation.SINGLE.value)
+            ),
             stages=tuple(stages),
             technologies=technologies,
             error_codes=tuple(FailureCode(code) for code in document["error_codes"]),
@@ -1165,6 +1077,7 @@ class RunStore:
         connection: sqlite3.Connection,
     ) -> _OutboxHashCache:
         cache = self._frontier_hash_cache(connection)
+        starting_sequence = cache.next_sequence
         while True:
             row = connection.execute(
                 """
@@ -1202,14 +1115,15 @@ class RunStore:
             if changed != 1:
                 raise LedgerIntegrityError("outbox prefix update was not exclusive")
             cache.next_sequence += 1
-        connection.execute(
-            """
-            UPDATE outbox_frontier
-            SET next_sequence = ?, byte_offset = ?, prefix_sha256 = ?
-            WHERE singleton = 1
-            """,
-            (cache.next_sequence, cache.byte_offset, cache.hasher.hexdigest()),
-        )
+        if cache.next_sequence != starting_sequence:
+            connection.execute(
+                """
+                UPDATE outbox_frontier
+                SET next_sequence = ?, byte_offset = ?, prefix_sha256 = ?
+                WHERE singleton = 1
+                """,
+                (cache.next_sequence, cache.byte_offset, cache.hasher.hexdigest()),
+            )
         return cache
 
     def verify_source(self, source_path: os.PathLike) -> TargetFileSummary:
@@ -1706,7 +1620,7 @@ class RunStore:
         hasher = hashlib.sha256()
         byte_offset = 0
         expected_sequence = 0
-        endpoint_results: Dict[int, Tuple[ProtocolResult, ...]] = {}
+        endpoint_results = OrderedDict()
         for row in self._connection.execute(
             """
             SELECT
@@ -1772,7 +1686,7 @@ class RunStore:
         self,
         row: sqlite3.Row,
         payload: bytes,
-        endpoint_results: Dict[int, Tuple[ProtocolResult, ...]],
+        endpoint_results,
     ) -> None:
         if row["occurrence_sequence"] is None or row["occurrence_terminal"] != 1:
             raise LedgerIntegrityError("outbox row has no terminal occurrence")
@@ -1789,12 +1703,16 @@ class RunStore:
             endpoint_id = row["occurrence_endpoint_id"]
             if row["result_endpoint_id"] != endpoint_id:
                 raise LedgerIntegrityError("terminal occurrence has no endpoint result")
-            if endpoint_id not in endpoint_results:
+            try:
+                protocols = endpoint_results.pop(endpoint_id)
+            except KeyError:
                 result_payload = bytes(row["result_payload"])
                 if hashlib.sha256(result_payload).hexdigest() != row["result_payload_sha256"]:
                     raise LedgerIntegrityError("endpoint result digest is inconsistent")
-                endpoint_results[endpoint_id] = _deserialize_protocols(result_payload)
-            protocols = endpoint_results[endpoint_id]
+                protocols = _deserialize_protocols(result_payload)
+            endpoint_results[endpoint_id] = protocols
+            if len(endpoint_results) > _VERIFY_RESULT_CACHE_SIZE:
+                endpoint_results.popitem(last=False)
             error_codes = _occurrence_errors(protocols)
         occurrence = TargetOccurrence(
             sequence=row["occurrence_sequence"],

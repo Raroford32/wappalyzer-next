@@ -354,17 +354,16 @@ class CompleteScanExecutor:
         self.timeout = timeout
         self.asset_workers = asset_workers
         self._default_static_runner = static_runner is _static_stage_job
-        self._regex_pool = (
-            regex_pool
-            if regex_pool is not None
-            else RegexWorkerPool(
+        if regex_pool is not None:
+            self._regex_pool = regex_pool
+        elif self._default_static_runner:
+            self._regex_pool = RegexWorkerPool(
                 workers=static_workers,
                 wall_timeout=timeout,
                 cpu_seconds=max(1, int(timeout)),
             )
-            if self._default_static_runner
-            else None
-        )
+        else:
+            self._regex_pool = None
         self._owns_regex_pool = regex_pool is None and self._regex_pool is not None
         self._static_executor = concurrent.futures.ThreadPoolExecutor(
             max_workers=static_workers,

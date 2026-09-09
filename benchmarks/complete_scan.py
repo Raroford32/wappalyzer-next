@@ -22,7 +22,7 @@ from wappalyzer.models import (
     TLSMetadata,
     TLSTrust,
     aggregate_occurrence_status,
-    canonical_ndjson_bytes,
+    canonical_json_bytes,
 )
 from wappalyzer.scanner import CompleteScanExecutor
 
@@ -108,8 +108,8 @@ async def execute(repeats, workers):
     return results
 
 
-def semantic_bytes(results):
-    records = []
+def semantic_sha256(results):
+    hasher = hashlib.sha256()
     endpoint = Endpoint("192.0.2.1", 8080)
     for index, result in enumerate(results):
         occurrence = TargetOccurrence(
@@ -123,28 +123,27 @@ def semantic_bytes(results):
         status = aggregate_occurrence_status(endpoint, protocols)
         if status not in {OccurrenceStatus.SUCCESS, OccurrenceStatus.SUCCESS_EMPTY}:
             raise RuntimeError(f"benchmark scan was incomplete at index {index}")
-        records.append(
-            CanonicalRecord(
-                run_id="benchmark-run",
-                occurrence=occurrence,
-                status=status,
-                protocols=protocols,
-            )
+        record = CanonicalRecord(
+            run_id="benchmark-run",
+            occurrence=occurrence,
+            status=status,
+            protocols=protocols,
         )
-    return canonical_ndjson_bytes(records)
+        hasher.update(canonical_json_bytes(record))
+        hasher.update(b"\n")
+    return hasher.hexdigest()
 
 
 def measure(repeats, workers):
     started = time.perf_counter()
     results = asyncio.run(execute(repeats, workers))
     elapsed = time.perf_counter() - started
-    payload = semantic_bytes(results)
     return {
         "all_channel_scans_per_second": round(repeats / elapsed, 3),
         "channel_count": len(CHANNEL_REGISTRY),
         "elapsed_seconds": round(elapsed, 6),
         "records": repeats,
-        "semantic_sha256": hashlib.sha256(payload).hexdigest(),
+        "semantic_sha256": semantic_sha256(results),
         "workers": workers,
     }
 

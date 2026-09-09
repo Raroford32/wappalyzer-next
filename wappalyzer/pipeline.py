@@ -4,13 +4,10 @@ from dataclasses import dataclass
 from typing import Dict, Sequence
 
 from wappalyzer.models import (
-    FailureCode,
     Protocol,
     ProtocolResult,
-    ProtocolStatus,
     RunStatus,
-    TLSMetadata,
-    TLSTrust,
+    worker_failure_protocol,
 )
 from wappalyzer.output import CanonicalProjector
 from wappalyzer.runstore import EndpointClaim, RunStateError, RunStore
@@ -23,26 +20,8 @@ class PipelineStats:
     projected_records: int
 
 
-def _failed_protocol(endpoint, protocol):
-    requested_url = f"{protocol.value}://{endpoint.authority}/"
-    return ProtocolResult(
-        protocol=protocol,
-        status=ProtocolStatus.INDETERMINATE,
-        requested_url=requested_url,
-        effective_url=requested_url,
-        http_status=None,
-        tls=TLSMetadata(
-            present=protocol is Protocol.HTTPS,
-            trust=(
-                TLSTrust.INDETERMINATE if protocol is Protocol.HTTPS else TLSTrust.NOT_APPLICABLE
-            ),
-        ),
-        error_codes=(FailureCode.WORKER_FAILURE,),
-    )
-
-
 def _worker_failure_results(endpoint):
-    return tuple(_failed_protocol(endpoint, protocol) for protocol in Protocol)
+    return tuple(worker_failure_protocol(endpoint, protocol) for protocol in Protocol)
 
 
 def _normalize_results(endpoint, value):
@@ -55,7 +34,10 @@ def _normalize_results(endpoint, value):
     if len(by_protocol) != len(results):
         return _worker_failure_results(endpoint)
     return tuple(
-        by_protocol.get(protocol, _failed_protocol(endpoint, protocol)) for protocol in Protocol
+        by_protocol[protocol]
+        if protocol in by_protocol
+        else worker_failure_protocol(endpoint, protocol)
+        for protocol in Protocol
     )
 
 
@@ -115,6 +97,7 @@ class BoundedScanPipeline:
         endpoints_committed = 0
         max_inflight_observed = 0
         projected_records = 0
+        records_since_projection = 0
         exhausted = False
 
         while tasks or not exhausted:
@@ -146,12 +129,12 @@ class BoundedScanPipeline:
                     results = _worker_failure_results(claim.endpoint)
                 else:
                     results = _normalize_results(claim.endpoint, value)
-                self.store.commit_endpoint(claim, results)
+                records_since_projection += self.store.commit_endpoint(claim, results)
                 endpoints_committed += 1
 
-            projected_records += self.projector.project(
-                max_records=self.projection_batch_records,
-            )
+            if records_since_projection >= self.projection_batch_records:
+                projected_records += self.projector.project()
+                records_since_projection = 0
 
         return PipelineStats(
             endpoints_committed=endpoints_committed,

@@ -11,6 +11,7 @@ from wappalyzer.evidence import (
     StageEvidence,
     merge_stage_evidence,
     resolve_raw_detections,
+    stage_status,
 )
 from wappalyzer.models import (
     CHANNEL_REGISTRY,
@@ -27,6 +28,18 @@ from wappalyzer.models import (
 DIGEST_A = "a" * 64
 DIGEST_B = "b" * 64
 DIGEST_C = "c" * 64
+
+
+@pytest.mark.parametrize(
+    ("detections", "truncations", "expected"),
+    [
+        ((), ("limit",), StageStatus.PARTIAL),
+        (("detection",), (), StageStatus.SUCCESS),
+        ((), (), StageStatus.SUCCESS_EMPTY),
+    ],
+)
+def test_stage_status_prioritizes_incomplete_evidence(detections, truncations, expected):
+    assert stage_status(detections, truncations) is expected
 
 
 def raw(

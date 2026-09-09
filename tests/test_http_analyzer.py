@@ -173,8 +173,52 @@ def test_complete_static_stage_emits_only_static_owned_raw_channels(monkeypatch)
     assert [(item.technology, item.channel) for item in detections] == [("RobotsTech", "robots")]
 
 
-def test_static_stage_delegates_matching_to_isolated_worker_pool():
+def test_complete_static_collection_skips_browser_owned_parsing(monkeypatch):
+    def forbidden(*_args, **_kwargs):
+        raise AssertionError("complete static collection parsed browser-owned evidence")
+
+    monkeypatch.setattr(analyzer, "BeautifulSoup", forbidden)
+    monkeypatch.setattr(analyzer, "get_css", forbidden)
+    monkeypatch.setattr(analyzer, "get_meta", forbidden)
+    monkeypatch.setattr(analyzer, "get_scriptSrc", forbidden)
+
+    evidence = analyzer.collect_static_evidence(response(), deadline=0)
+
+    assert set(evidence) == {"_truncations", "certIssuer", "dns", "probes", "robots"}
+
+
+def test_static_raw_evidence_digest_is_computed_once_per_channel(monkeypatch):
+    database = {
+        "First": {"cats": [], "robots": "marker"},
+        "Second": {"cats": [], "robots": "marker"},
+    }
+    monkeypatch.setattr(analyzer, "DETECTOR_PLAN", analyzer.build_detector_plan(database))
+    original_digest = analyzer._stable_digest
+    values = []
+
+    def recording_digest(value):
+        values.append(value)
+        return original_digest(value)
+
+    monkeypatch.setattr(analyzer, "_stable_digest", recording_digest)
+
+    detections = analyzer.collect_raw_detections(
+        {"robots": "marker"},
+        owner=ChannelOwner.STATIC,
+    )
+
+    assert len(detections) == 2
+    assert values.count("marker") == 3
+
+
+def test_static_stage_delegates_matching_to_isolated_worker_pool(monkeypatch):
     calls = []
+
+    monkeypatch.setattr(
+        analyzer,
+        "prepare_matchers",
+        lambda: pytest.fail("parent process warmed matchers before isolated matching"),
+    )
 
     class RecordingPool:
         def run(self, function, *args, timeout):
@@ -234,28 +278,12 @@ def test_primary_request_failure_is_not_reported_as_empty_success(monkeypatch):
         analyzer.http_scan("https://unreachable.example", "fast")
 
 
-def test_versions_from_multiple_channels_merge_deterministically():
-    forward = {}
-    reverse = {}
-
-    analyzer._add_candidate(forward, "VersionedTech", (True, "10", 50))
-    analyzer._add_candidate(forward, "VersionedTech", (True, "9", 50))
-    analyzer._add_candidate(reverse, "VersionedTech", (True, "9", 50))
-    analyzer._add_candidate(reverse, "VersionedTech", (True, "10", 50))
-
-    assert forward == reverse
-    assert forward["VersionedTech"] == {
-        "version": "10",
-        "confidence": 100,
-    }
-
-
 def test_expired_url_budget_skips_secondary_requests(monkeypatch):
     def forbidden(*args, **kwargs):
         raise AssertionError("secondary request exceeded the URL budget")
 
     monkeypatch.setattr(analyzer, "get_dns", forbidden)
-    monkeypatch.setattr(analyzer, "_get_robots_with", forbidden)
+    monkeypatch.setattr(analyzer, "get_robots", forbidden)
     monkeypatch.setattr(analyzer, "get_certIssuer", forbidden)
     monkeypatch.setattr(analyzer, "_probe_responses", forbidden)
 

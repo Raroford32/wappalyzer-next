@@ -11,7 +11,6 @@ import zipfile
 from contextlib import asynccontextmanager
 from http.cookies import SimpleCookie
 from pathlib import Path
-from urllib.parse import urlsplit
 
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from playwright.async_api import async_playwright
@@ -19,8 +18,9 @@ from playwright.async_api import async_playwright
 from wappalyzer.core.config import extension_path
 from wappalyzer.core.matcher import better_version
 from wappalyzer.core.requester import VERIFY_TLS
+from wappalyzer.core.transport import http_origin
 from wappalyzer.core.utils import enrich_result
-from wappalyzer.evidence import RawDetection, StageEvidence
+from wappalyzer.evidence import RawDetection, StageEvidence, stage_status
 from wappalyzer.evidence_limits import (
     BROWSER_DOM_TEXT_CHARACTER_LIMIT,
     BROWSER_HTML_CHARACTER_LIMIT,
@@ -35,7 +35,6 @@ from wappalyzer.models import (
     EvidenceTruncation,
     ResponseIdentity,
     StageName,
-    StageStatus,
     TLSTrust,
 )
 
@@ -565,20 +564,8 @@ class BrowserDriver:
         shutil.rmtree(self.user_data_dir, ignore_errors=True)
 
 
-def _http_origin(url):
-    parsed = urlsplit(url)
-    if parsed.scheme.casefold() not in {"http", "https"} or not parsed.hostname:
-        return None
-    default_port = 443 if parsed.scheme.casefold() == "https" else 80
-    try:
-        port = parsed.port or default_port
-    except ValueError:
-        return None
-    return parsed.scheme.casefold(), parsed.hostname.casefold(), port
-
-
 def _tls_exception_allows(url, exception_origin):
-    request_origin = _http_origin(url)
+    request_origin = http_origin(url)
     if exception_origin is None or request_origin is None:
         return True
     if request_origin[0] != "https":
@@ -587,7 +574,7 @@ def _tls_exception_allows(url, exception_origin):
 
 
 def _browser_route_allows(url, target_origin):
-    request_origin = _http_origin(url)
+    request_origin = http_origin(url)
     if target_origin is None or request_origin is None:
         return True
     try:
@@ -1116,12 +1103,12 @@ async def _process_page(driver, url, *, raw, tls_trust=TLSTrust.TRUSTED):
     navigation_timed_out = False
     certificate_session = None
     driver.route_state["policy_blocked"] = False
-    driver.route_state["target_origin"] = _http_origin(url)
+    driver.route_state["target_origin"] = http_origin(url)
 
     try:
         await driver.apply_pending_cookies(url)
         if tls_trust is TLSTrust.UNTRUSTED:
-            exception_origin = _http_origin(url)
+            exception_origin = http_origin(url)
             if exception_origin is None or exception_origin[0] != "https":
                 raise ValueError("untrusted TLS exception requires an HTTPS URL")
             driver.route_state["tls_exception_origin"] = exception_origin
@@ -1229,7 +1216,7 @@ async def process_url(driver, url):
     return url, detections
 
 
-def browser_evidence_truncations(detections, metrics, timed_out, policy_blocked=False):
+def browser_evidence_truncations(metrics, timed_out, policy_blocked=False):
     limits_by_channel = {}
 
     def add(channel, limit):
@@ -1293,17 +1280,9 @@ async def process_url_evidence(driver, url, tls_trust=TLSTrust.TRUSTED):
     )
     raw = raw_browser_detections(detections)
     truncations = browser_evidence_truncations(
-        detections,
         metrics,
         timed_out,
         policy_blocked,
-    )
-    status = (
-        StageStatus.PARTIAL
-        if truncations
-        else StageStatus.SUCCESS
-        if raw
-        else StageStatus.SUCCESS_EMPTY
     )
     identity = (
         ResponseIdentity(
@@ -1316,7 +1295,7 @@ async def process_url_evidence(driver, url, tls_trust=TLSTrust.TRUSTED):
     )
     return StageEvidence(
         name=StageName.BROWSER,
-        status=status,
+        status=stage_status(raw, truncations),
         response_identity=identity,
         detections=raw,
         truncations=truncations,

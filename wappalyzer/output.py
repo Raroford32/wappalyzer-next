@@ -288,11 +288,11 @@ def build_manifest_bytes(store: RunStore) -> bytes:
     )
 
 
-def _manifest_matches(path: Path, expected: bytes) -> bool:
+def _manifest_matches(path: Path, expected: bytes) -> Optional[bool]:
     try:
         value = path.lstat()
     except FileNotFoundError:
-        return False
+        return None
     if stat.S_ISLNK(value.st_mode) or not stat.S_ISREG(value.st_mode) or value.st_nlink != 1:
         raise ArtifactExistsError(f"manifest path is occupied by an unsafe artifact: {path}")
     flags = os.O_RDONLY
@@ -341,8 +341,9 @@ def publish_manifest(store: RunStore) -> Path:
     path = store.generation_path / store.MANIFEST_FILENAME
     digest = hashlib.sha256(payload).hexdigest()
 
-    if os.path.lexists(str(path)):
-        if _manifest_matches(path, payload):
+    manifest_matches = _manifest_matches(path, payload)
+    if manifest_matches is not None:
+        if manifest_matches:
             store.record_manifest(len(payload), digest)
             return path
         raise ArtifactExistsError(f"manifest already exists: {path}")

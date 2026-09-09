@@ -6,7 +6,7 @@ import sys
 from huepy import bold, green
 
 from wappalyzer.core.config import cat_db, groups_db, tech_db
-from wappalyzer.core.matcher import better_version, parse_pattern
+from wappalyzer.core.matcher import parse_pattern
 
 
 def get_cats_and_groups(tech_name):
@@ -43,26 +43,6 @@ def detection_rank(name, detection):
         bool(detection.get("version")),
         -list(tech_db).index(name) if name in tech_db else 0,
     )
-
-
-def merge_detection(target, candidate, additive=False):
-    if additive:
-        target["confidence"] = min(
-            target.get("confidence", 0) + candidate.get("confidence", 0),
-            100,
-        )
-    else:
-        target["confidence"] = max(
-            target.get("confidence", 0),
-            candidate.get("confidence", 0),
-        )
-
-    target["version"] = better_version(
-        candidate.get("version", ""),
-        target.get("version", ""),
-    )
-
-    target["_direct"] = target.get("_direct", False) or candidate.get("_direct", False)
 
 
 def resolve_implies(detections):
@@ -102,13 +82,11 @@ def resolve_excludes(detections):
     to_remove = set()
 
     for source_name in sorted(detections):
-        for excluded_name in relationship_names(tech_db.get(source_name, {}).get("excludes", [])):
+        source_excludes = relationship_names(tech_db.get(source_name, {}).get("excludes", []))
+        for excluded_name in source_excludes:
             if excluded_name not in detections or excluded_name in to_remove:
                 continue
 
-            source_excludes = set(
-                relationship_names(tech_db.get(source_name, {}).get("excludes", []))
-            )
             target_excludes = set(
                 relationship_names(tech_db.get(excluded_name, {}).get("excludes", []))
             )
@@ -123,7 +101,7 @@ def resolve_excludes(detections):
                     to_remove.add(excluded_name)
                 else:
                     to_remove.add(max(source_name, excluded_name))
-            elif excluded_name in source_excludes:
+            else:
                 to_remove.add(excluded_name)
 
     for name in to_remove:
@@ -211,10 +189,7 @@ def create_result(technologies):
             "_direct": True,
         }
 
-        if tech_name in resolved:
-            merge_detection(resolved[tech_name], candidate, additive=True)
-        else:
-            resolved[tech_name] = candidate
+        resolved[tech_name] = candidate
 
     resolve_requirements(resolved)
     resolve_excludes(resolved)

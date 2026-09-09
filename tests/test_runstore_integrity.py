@@ -1306,6 +1306,49 @@ def test_verify_outbox_accepts_uncommitted_gap_and_cached_endpoint_results(tmp_p
         duplicate.close()
 
 
+def test_outbox_frontier_skips_noop_update_when_no_contiguous_record_advanced(tmp_path):
+    store = _executing_store(tmp_path, b"192.0.2.10:80\n")
+    statements = []
+    store._connection.set_trace_callback(statements.append)
+    try:
+        with runstore_module._transaction(store._connection):
+            store._advance_outbox_frontier(store._connection)
+    finally:
+        store._connection.set_trace_callback(None)
+        store.close()
+
+    assert not any("UPDATE outbox_frontier" in statement for statement in statements)
+
+
+def test_outbox_verification_bounds_endpoint_result_cache(tmp_path, monkeypatch):
+    store = _executing_store(
+        tmp_path,
+        b"192.0.2.10:80\n192.0.2.11:80\n192.0.2.10:80\n",
+    )
+    while True:
+        claim = store.claim_endpoint()
+        if claim is None:
+            break
+        store.commit_endpoint(claim, (_success_empty(claim.endpoint),))
+
+    deserialized = 0
+    original_deserialize = runstore_module._deserialize_protocols
+
+    def recording_deserialize(payload):
+        nonlocal deserialized
+        deserialized += 1
+        return original_deserialize(payload)
+
+    monkeypatch.setattr(runstore_module, "_VERIFY_RESULT_CACHE_SIZE", 1)
+    monkeypatch.setattr(runstore_module, "_deserialize_protocols", recording_deserialize)
+    try:
+        store._verify_outbox()
+    finally:
+        store.close()
+
+    assert deserialized == 3
+
+
 @pytest.mark.parametrize(
     ("corruption", "message"),
     [

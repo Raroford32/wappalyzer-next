@@ -402,7 +402,7 @@ def test_completed_manifest_rebuild_preserves_recorded_event_count(tmp_path):
 def test_manifest_match_handles_absence_content_and_unsafe_aliases(tmp_path):
     path = tmp_path / "manifest.json"
     expected = b'{"manifest":true}\n'
-    assert output_module._manifest_matches(path, expected) is False
+    assert output_module._manifest_matches(path, expected) is None
 
     path.write_bytes(expected)
     assert output_module._manifest_matches(path, expected) is True

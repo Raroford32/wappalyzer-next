@@ -2,12 +2,17 @@ import threading
 import time
 from dataclasses import dataclass
 from typing import Optional, Tuple
-from urllib.parse import urljoin, urlsplit
+from urllib.parse import urljoin
 
 import requests
 
 from wappalyzer.core.requester import get_response
-from wappalyzer.core.transport import DestinationBlocked, EgressPolicy, RequestPurpose
+from wappalyzer.core.transport import (
+    DestinationBlocked,
+    EgressPolicy,
+    RequestPurpose,
+    http_origin,
+)
 from wappalyzer.models import Endpoint, EvidenceLimit, TLSMetadata, TLSTrust
 
 DEFAULT_MAX_REDIRECTS = 10
@@ -17,17 +22,6 @@ DEFAULT_MAX_REDIRECTS = 10
 class DirectResponseOutcome:
     response: Optional[requests.Response]
     limits: Tuple[EvidenceLimit, ...] = ()
-
-
-def _origin(url):
-    parsed = urlsplit(url)
-    if parsed.scheme.casefold() not in {"http", "https"} or not parsed.hostname:
-        return None
-    try:
-        port = parsed.port or (443 if parsed.scheme.casefold() == "https" else 80)
-    except ValueError:
-        return None
-    return parsed.scheme.casefold(), parsed.hostname.casefold(), port
 
 
 def _harden_session(session):
@@ -94,7 +88,7 @@ class DirectResponseFetcher:
         effective_timeout = self.timeout if timeout is None else min(self.timeout, timeout)
         started = self.monotonic()
         current = url
-        target_origin = _origin(url)
+        target_origin = http_origin(url)
         session = self.session_factory()
         _harden_session(session)
         response = None
@@ -112,7 +106,7 @@ class DirectResponseFetcher:
                     self._add_limit(EvidenceLimit.TIMER)
                     return DirectResponseOutcome(response, self.limits)
                 verify = not (
-                    self.tls.trust is TLSTrust.UNTRUSTED and _origin(current) == target_origin
+                    self.tls.trust is TLSTrust.UNTRUSTED and http_origin(current) == target_origin
                 )
                 response = get_response(
                     current,
@@ -126,7 +120,7 @@ class DirectResponseFetcher:
                 if response is None:
                     return DirectResponseOutcome(None, self.limits)
                 location = response.headers.get("Location")
-                if response.status_code not in {301, 302, 303, 307, 308} or not location:
+                if not response.is_redirect or not location:
                     return DirectResponseOutcome(response, self.limits)
                 if redirect_count == self.max_redirects:
                     self._add_limit(EvidenceLimit.REDIRECT)

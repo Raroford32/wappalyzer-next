@@ -156,14 +156,21 @@ class DestinationBlocked(RuntimeError):
 def _default_resolver(host: str) -> Tuple[str, ...]:
     records = socket.getaddrinfo(host, None, type=socket.SOCK_STREAM)
     addresses = []
-    seen = set()
     for record in records:
         address = record[4][0]
-        normalized = str(ipaddress.ip_address(address))
-        if normalized not in seen:
-            addresses.append(normalized)
-            seen.add(normalized)
-    return tuple(addresses)
+        addresses.append(str(ipaddress.ip_address(address)))
+    return tuple(dict.fromkeys(addresses))
+
+
+def http_origin(url):
+    parsed = urlsplit(url)
+    if parsed.scheme.casefold() not in {"http", "https"} or not parsed.hostname:
+        return None
+    try:
+        port = parsed.port or (443 if parsed.scheme.casefold() == "https" else 80)
+    except ValueError:
+        return None
+    return parsed.scheme.casefold(), parsed.hostname.casefold(), port
 
 
 def _parse_http_url(url: str) -> Tuple[SplitResult, str, int, Optional[IPAddress]]:
@@ -586,6 +593,7 @@ __all__ = [
     "TransportLimits",
     "TransportResult",
     "TransportState",
+    "http_origin",
     "sanitize_diagnostic",
     "sanitize_url",
 ]

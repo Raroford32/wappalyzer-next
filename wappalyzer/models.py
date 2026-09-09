@@ -350,6 +350,24 @@ class ProtocolResult:
         object.__setattr__(self, "error_codes", error_codes)
 
 
+def worker_failure_protocol(endpoint: Endpoint, protocol: Protocol) -> ProtocolResult:
+    requested_url = f"{protocol.value}://{endpoint.authority}/"
+    return ProtocolResult(
+        protocol=protocol,
+        status=ProtocolStatus.INDETERMINATE,
+        requested_url=requested_url,
+        effective_url=requested_url,
+        http_status=None,
+        tls=TLSMetadata(
+            present=protocol is Protocol.HTTPS,
+            trust=(
+                TLSTrust.INDETERMINATE if protocol is Protocol.HTTPS else TLSTrust.NOT_APPLICABLE
+            ),
+        ),
+        error_codes=(FailureCode.WORKER_FAILURE,),
+    )
+
+
 @dataclass(frozen=True)
 class Failure:
     code: FailureCode

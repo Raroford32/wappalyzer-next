@@ -104,6 +104,14 @@ class StageEvidence:
         object.__setattr__(self, "truncations", truncations)
 
 
+def stage_status(detections, truncations):
+    if truncations:
+        return StageStatus.PARTIAL
+    if detections:
+        return StageStatus.SUCCESS
+    return StageStatus.SUCCESS_EMPTY
+
+
 def _candidate_rank(candidate):
     return (
         candidate.confidence,

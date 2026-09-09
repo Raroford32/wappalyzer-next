@@ -3,7 +3,7 @@ import requests
 
 import wappalyzer.core.direct_requester as direct_requester_module
 from wappalyzer.core.direct_requester import DirectResponseFetcher
-from wappalyzer.core.transport import EgressPolicy
+from wappalyzer.core.transport import EgressPolicy, http_origin
 from wappalyzer.models import Endpoint, EvidenceLimit, TLSMetadata, TLSTrust
 
 
@@ -128,11 +128,11 @@ def test_untrusted_exception_does_not_cross_to_public_redirect_authority():
     ],
 )
 def test_origin_rejects_unsupported_or_malformed_urls(url):
-    assert direct_requester_module._origin(url) is None
+    assert http_origin(url) is None
 
 
 def test_origin_normalizes_default_ports_and_host_case():
-    assert direct_requester_module._origin("HTTPS://EXAMPLE.TEST/path") == (
+    assert http_origin("HTTPS://EXAMPLE.TEST/path") == (
         "https",
         "example.test",
         443,

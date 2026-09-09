@@ -228,6 +228,37 @@ def test_pipeline_bounds_claims_keeps_workers_busy_and_projects_in_input_order(t
     store.close()
 
 
+def test_pipeline_projects_only_at_record_batch_boundaries_and_final_drain(tmp_path):
+    store = prepared_store(tmp_path, 5)
+
+    class CountingProjector(CanonicalProjector):
+        def __init__(self, run_store):
+            super().__init__(run_store)
+            self.calls = []
+
+        def project(self, max_records=None):
+            self.calls.append(max_records)
+            return super().project(max_records=max_records)
+
+    async def scan(endpoint):
+        return protocol_results(endpoint)
+
+    projector = CountingProjector(store)
+    pipeline = BoundedScanPipeline(
+        store=store,
+        scan_endpoint=scan,
+        projector=projector,
+        max_inflight=1,
+        projection_batch_records=3,
+    )
+
+    stats = asyncio.run(pipeline.run())
+
+    assert projector.calls == [None, None]
+    assert stats.projected_records == 5
+    store.close()
+
+
 def test_pipeline_converts_worker_exceptions_to_terminal_protocol_outcomes(tmp_path):
     store = prepared_store(tmp_path, 2)
 

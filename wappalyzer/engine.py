@@ -11,8 +11,7 @@ from wappalyzer.models import (
     Protocol,
     ProtocolResult,
     ProtocolStatus,
-    TLSMetadata,
-    TLSTrust,
+    worker_failure_protocol,
 )
 from wappalyzer.resources import (
     DEFAULT_RESOURCE_PROFILE,
@@ -23,24 +22,6 @@ from wappalyzer.resources import (
     capture_snapshot,
 )
 from wappalyzer.scanner import CompleteScanExecutor, _FullScanBackend
-
-
-def _failed_protocol(endpoint, protocol, failure_code=FailureCode.WORKER_FAILURE):
-    requested_url = f"{protocol.value}://{endpoint.authority}/"
-    return ProtocolResult(
-        protocol=protocol,
-        status=ProtocolStatus.INDETERMINATE,
-        requested_url=requested_url,
-        effective_url=requested_url,
-        http_status=None,
-        tls=TLSMetadata(
-            present=protocol is Protocol.HTTPS,
-            trust=(
-                TLSTrust.INDETERMINATE if protocol is Protocol.HTTPS else TLSTrust.NOT_APPLICABLE
-            ),
-        ),
-        error_codes=(failure_code,),
-    )
 
 
 def _nonlive_result(discovery):
@@ -92,9 +73,9 @@ class ExhaustiveEndpointScanner:
         except asyncio.CancelledError:
             raise
         except Exception:
-            return _failed_protocol(endpoint, discovery.protocol)
+            return worker_failure_protocol(endpoint, discovery.protocol)
         if not isinstance(result, ProtocolResult) or result.protocol is not discovery.protocol:
-            return _failed_protocol(endpoint, discovery.protocol)
+            return worker_failure_protocol(endpoint, discovery.protocol)
         return result
 
     async def scan(self, endpoint):
@@ -114,14 +95,14 @@ class ExhaustiveEndpointScanner:
         except asyncio.CancelledError:
             raise
         except Exception:
-            return tuple(_failed_protocol(endpoint, protocol) for protocol in PROTOCOL_ORDER)
+            return tuple(worker_failure_protocol(endpoint, protocol) for protocol in PROTOCOL_ORDER)
 
         if (
             any(not isinstance(result, DiscoveryResult) for result in discoveries)
             or len(discoveries) != len(PROTOCOL_ORDER)
             or {result.protocol for result in discoveries} != set(PROTOCOL_ORDER)
         ):
-            return tuple(_failed_protocol(endpoint, protocol) for protocol in PROTOCOL_ORDER)
+            return tuple(worker_failure_protocol(endpoint, protocol) for protocol in PROTOCOL_ORDER)
 
         by_protocol: Dict[Protocol, ProtocolResult] = {}
         tasks = {}

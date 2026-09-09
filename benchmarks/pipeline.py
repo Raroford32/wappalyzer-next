@@ -65,6 +65,14 @@ def write_input(path, record_count):
     return digest.hexdigest()
 
 
+def file_sha256(path):
+    digest = hashlib.sha256()
+    with Path(path).open("rb") as stream:
+        for chunk in iter(lambda: stream.read(64 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def run_spec(input_sha256):
     return RunSpec(
         input_sha256=input_sha256,
@@ -219,10 +227,9 @@ def measure_once(
         tracemalloc.stop()
         rss_after = resident_bytes()
         canonical_path = generation / store.CANONICAL_FILENAME
-        canonical = canonical_path.read_bytes()
         utilization = scanner.busy_seconds / (elapsed * workers) if elapsed and workers else 0.0
         return {
-            "canonical_sha256": hashlib.sha256(canonical).hexdigest(),
+            "canonical_sha256": file_sha256(canonical_path),
             "disk_bytes": tree_bytes(generation),
             "elapsed_seconds": round(elapsed, 6),
             "eligible_worker_utilization": round(min(utilization, 1.0), 6),
@@ -281,9 +288,8 @@ def measure_recovery(
             )
         )
         resume_elapsed = time.perf_counter() - started
-        canonical = (generation / resumed_store.CANONICAL_FILENAME).read_bytes()
         return {
-            "canonical_sha256": hashlib.sha256(canonical).hexdigest(),
+            "canonical_sha256": file_sha256(generation / resumed_store.CANONICAL_FILENAME),
             "committed_before_resume": committed_before_resume,
             "elapsed_seconds": round(resume_elapsed, 6),
             "interrupted_after": interrupt_after,

@@ -12,7 +12,6 @@ from bs4 import BeautifulSoup
 from wappalyzer.analyzers.dom import compile_selector, match_dom
 from wappalyzer.core.config import tech_db
 from wappalyzer.core.matcher import (
-    better_version,
     combine_matches,
     compile_pattern,
     match,
@@ -21,7 +20,7 @@ from wappalyzer.core.matcher import (
 )
 from wappalyzer.core.regex_workers import RegexTimeoutError, RegexWorkerError
 from wappalyzer.core.requester import get_response
-from wappalyzer.evidence import RawDetection, StageEvidence, resolve_raw_detections
+from wappalyzer.evidence import RawDetection, StageEvidence, resolve_raw_detections, stage_status
 from wappalyzer.evidence_limits import (
     COMPLETE_PROBE_COUNT_LIMIT,
     COMPLETE_PROBE_ITEM_BYTES_LIMIT,
@@ -34,12 +33,12 @@ from wappalyzer.models import (
     FailureCode,
     ResponseIdentity,
     StageName,
-    StageStatus,
 )
 from wappalyzer.parsers.certIssuer import get_certIssuer
 from wappalyzer.parsers.css import get_css
 from wappalyzer.parsers.dns import get_dns
 from wappalyzer.parsers.meta import get_meta
+from wappalyzer.parsers.robots import get_robots
 from wappalyzer.parsers.scriptSrc import get_scriptSrc
 
 PATTERN_FIELDS = {
@@ -304,11 +303,79 @@ def _probe_responses(
     return responses
 
 
-def _get_robots_with(url, timeout, response_fetcher):
-    parsed = urlparse(url)
-    robots_url = f"{parsed.scheme}://{parsed.netloc}/robots.txt"
-    response = response_fetcher(robots_url, timeout=timeout)
-    return response.text if response else ""
+def _collect_auxiliary_evidence(
+    response,
+    scan_type,
+    cookie,
+    deadline,
+    asset_workers,
+    response_fetcher,
+    asset_budget,
+):
+    extracted = tldextract.extract(response.url)
+    parsed_url = urlparse(response.url)
+    domain = ".".join(part for part in (extracted.domain, extracted.suffix) if part)
+    base_url = f"{parsed_url.scheme}://{parsed_url.netloc}"
+    values = {
+        "certIssuer": "",
+        "dns": {},
+        "probes": {},
+        "robots": "",
+    }
+    remaining = _remaining_seconds(deadline)
+
+    if scan_type != "fast" and remaining > 0:
+        auxiliary_workers = min(4, asset_workers)
+        nested_workers = max(1, asset_workers // 2)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=auxiliary_workers) as executor:
+            future_to_field = {
+                executor.submit(
+                    get_robots,
+                    response.url,
+                    remaining,
+                    response_fetcher,
+                ): "robots",
+                executor.submit(
+                    get_certIssuer,
+                    response,
+                    timeout=min(remaining, 5),
+                ): "certIssuer",
+                executor.submit(
+                    _probe_responses,
+                    base_url,
+                    remaining,
+                    cookie,
+                    asset_budget,
+                    nested_workers,
+                    COMPLETE_PROBE_ITEM_BYTES_LIMIT if scan_type == "complete" else ASSET_MAX_BYTES,
+                    response_fetcher,
+                ): "probes",
+            }
+
+            if domain:
+                future_to_field[
+                    executor.submit(
+                        get_dns,
+                        domain,
+                        timeout=min(remaining, 5),
+                        workers=nested_workers,
+                    )
+                ] = "dns"
+
+            for future in concurrent.futures.as_completed(future_to_field):
+                field = future_to_field[future]
+
+                try:
+                    values[field] = future.result()
+                except Exception:
+                    values[field] = {} if field in {"dns", "probes"} else ""
+    elif scan_type != "fast":
+        for channel in ("certIssuer", "probe", "robots"):
+            asset_budget.truncate(channel, EvidenceLimit.TIMER)
+        if domain:
+            asset_budget.truncate("dns", EvidenceLimit.TIMER)
+
+    return values
 
 
 def collect_evidence(
@@ -324,10 +391,6 @@ def collect_evidence(
         deadline = time.monotonic() + timeout
     asset_workers = asset_worker_count(asset_workers)
     soup = BeautifulSoup(response.text, "html.parser")
-    r = tldextract.extract(response.url)
-    parsed_url = urlparse(response.url)
-    domain = ".".join(part for part in (r.domain, r.suffix) if part)
-    base_url = f"{parsed_url.scheme}://{parsed_url.netloc}"
     scripts = []
     asset_budget = AssetBudget(
         COMPLETE_PROBE_COUNT_LIMIT if scan_type == "complete" else ASSET_LIMIT
@@ -379,86 +442,30 @@ def collect_evidence(
         elif css_urls:
             asset_budget.truncate("css", EvidenceLimit.TIMER)
 
-    dns = {}
     meta = get_meta(soup)
     cookies = response.cookies.get_dict()
-    robots = ""
-    cert_issuer = ""
-    probes = {}
-    remaining = _remaining_seconds(deadline)
-
-    if scan_type != "fast" and remaining > 0:
-        auxiliary_workers = min(4, asset_workers)
-        nested_workers = max(1, asset_workers // 2)
-        with concurrent.futures.ThreadPoolExecutor(max_workers=auxiliary_workers) as executor:
-            future_to_field = {
-                executor.submit(
-                    _get_robots_with,
-                    response.url,
-                    remaining,
-                    response_fetcher,
-                ): "robots",
-                executor.submit(
-                    get_certIssuer,
-                    response,
-                    timeout=min(remaining, 5),
-                ): "certIssuer",
-                executor.submit(
-                    _probe_responses,
-                    base_url,
-                    remaining,
-                    cookie,
-                    asset_budget,
-                    nested_workers,
-                    COMPLETE_PROBE_ITEM_BYTES_LIMIT if scan_type == "complete" else ASSET_MAX_BYTES,
-                    response_fetcher,
-                ): "probes",
-            }
-
-            if domain:
-                future_to_field[
-                    executor.submit(
-                        get_dns,
-                        domain,
-                        timeout=min(remaining, 5),
-                        workers=nested_workers,
-                    )
-                ] = "dns"
-
-            for future in concurrent.futures.as_completed(future_to_field):
-                field = future_to_field[future]
-
-                try:
-                    value = future.result()
-                except Exception:
-                    value = {} if field in {"dns", "probes"} else ""
-
-                if field == "dns":
-                    dns = value
-                elif field == "robots":
-                    robots = value
-                elif field == "certIssuer":
-                    cert_issuer = value
-                elif field == "probes":
-                    probes = value
-    elif scan_type != "fast":
-        for channel in ("certIssuer", "probe", "robots"):
-            asset_budget.truncate(channel, EvidenceLimit.TIMER)
-        if domain:
-            asset_budget.truncate("dns", EvidenceLimit.TIMER)
+    auxiliary = _collect_auxiliary_evidence(
+        response,
+        scan_type,
+        cookie,
+        deadline,
+        asset_workers,
+        response_fetcher,
+        asset_budget,
+    )
 
     return {
-        "certIssuer": cert_issuer,
+        "certIssuer": auxiliary["certIssuer"],
         "cookies": cookies,
         "css": css_sources,
-        "dns": dns,
+        "dns": auxiliary["dns"],
         "dom": soup,
         "headers": response.headers,
         "html": response.text,
         "js": [],
         "meta": meta,
-        "probes": probes,
-        "robots": robots,
+        "probes": auxiliary["probes"],
+        "robots": auxiliary["robots"],
         "scriptSrc": script_sources,
         "scripts": scripts,
         "text": soup.get_text(" ", strip=True),
@@ -468,23 +475,30 @@ def collect_evidence(
     }
 
 
-def _add_candidate(result, tech_name, candidate):
-    matched, version, confidence = candidate
-
-    if not matched:
-        return
-
-    if tech_name not in result:
-        result[tech_name] = {
-            "version": version or "",
-            "confidence": confidence,
-        }
-        return
-
-    current = result[tech_name]
-    current["confidence"] = min(current["confidence"] + confidence, 100)
-
-    current["version"] = better_version(version, current["version"])
+def collect_static_evidence(
+    response,
+    *,
+    cookie=None,
+    timeout=30,
+    deadline=None,
+    asset_workers=None,
+    response_fetcher=get_response,
+):
+    if deadline is None:
+        deadline = time.monotonic() + timeout
+    asset_workers = asset_worker_count(asset_workers)
+    asset_budget = AssetBudget(COMPLETE_PROBE_COUNT_LIMIT)
+    evidence = _collect_auxiliary_evidence(
+        response,
+        "complete",
+        cookie,
+        deadline,
+        asset_workers,
+        response_fetcher,
+        asset_budget,
+    )
+    evidence["_truncations"] = asset_budget.truncations
+    return evidence
 
 
 def _stable_digest(value):
@@ -498,7 +512,7 @@ def _stable_digest(value):
     return hashlib.sha256(payload).hexdigest()
 
 
-def _raw_detection(technology, channel, pattern, evidence, candidate):
+def _raw_detection(technology, channel, pattern, evidence_sha256, candidate):
     matched, version, confidence = candidate
     if not matched or confidence <= 0:
         return None
@@ -506,7 +520,7 @@ def _raw_detection(technology, channel, pattern, evidence, candidate):
         technology=technology,
         channel=channel,
         source_key=_stable_digest(pattern),
-        evidence_sha256=_stable_digest(evidence),
+        evidence_sha256=evidence_sha256,
         version=version or "",
         confidence=min(int(confidence), 100),
     )
@@ -527,6 +541,7 @@ def collect_raw_detections(evidence, owner=None):
         value = evidence.get(evidence_key)
         if not value and channel != "dom":
             continue
+        evidence_sha256 = _stable_digest(value)
 
         if channel == "dom":
             for technology, pattern in DETECTOR_PLAN[channel]:
@@ -534,7 +549,7 @@ def collect_raw_detections(evidence, owner=None):
                     technology,
                     channel,
                     pattern,
-                    value,
+                    evidence_sha256,
                     match_dom(pattern, value),
                 )
                 if detection is not None:
@@ -547,7 +562,7 @@ def collect_raw_detections(evidence, owner=None):
                     technology,
                     channel,
                     pattern,
-                    value,
+                    evidence_sha256,
                     match_dict(
                         pattern,
                         value,
@@ -575,7 +590,7 @@ def collect_raw_detections(evidence, owner=None):
                     technology,
                     channel,
                     probes,
-                    value,
+                    evidence_sha256,
                     aggregate,
                 )
                 if detection is not None:
@@ -587,7 +602,7 @@ def collect_raw_detections(evidence, owner=None):
                 technology,
                 channel,
                 pattern,
-                value,
+                evidence_sha256,
                 match(pattern, value),
             )
             if detection is not None:
@@ -616,16 +631,27 @@ def analyze_static_stage(
     regex_timeout=None,
     response_fetcher=get_response,
 ):
-    prepare_matchers()
-    evidence = collect_evidence(
-        response,
-        scan_type,
-        cookie=cookie,
-        timeout=timeout,
-        deadline=deadline,
-        asset_workers=asset_workers,
-        response_fetcher=response_fetcher,
-    )
+    if regex_pool is None:
+        prepare_matchers()
+    if scan_type == "complete":
+        evidence = collect_static_evidence(
+            response,
+            cookie=cookie,
+            timeout=timeout,
+            deadline=deadline,
+            asset_workers=asset_workers,
+            response_fetcher=response_fetcher,
+        )
+    else:
+        evidence = collect_evidence(
+            response,
+            scan_type,
+            cookie=cookie,
+            timeout=timeout,
+            deadline=deadline,
+            asset_workers=asset_workers,
+            response_fetcher=response_fetcher,
+        )
     worker_limits = {}
     error_codes = ()
     try:
@@ -672,16 +698,9 @@ def analyze_static_stage(
         for channel, limits in truncation_limits.items()
         if CHANNEL_REGISTRY[channel].owner is ChannelOwner.STATIC
     )
-    status = (
-        StageStatus.PARTIAL
-        if truncations
-        else StageStatus.SUCCESS
-        if detections
-        else StageStatus.SUCCESS_EMPTY
-    )
     return StageEvidence(
         name=StageName.STATIC,
-        status=status,
+        status=stage_status(detections, truncations),
         response_identity=ResponseIdentity(
             effective_url=response.url,
             http_status=response.status_code,
