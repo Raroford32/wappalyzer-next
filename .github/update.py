@@ -391,7 +391,12 @@ def patch_raw_tab_detections(content):
     const tabResult = Driver.getTabResult(tabId, url, true)
 
     return (tabResult?.detections || [])
-      .filter(({ lastUrl }) => !lastUrl || isSimilarUrl(url, lastUrl))
+      .filter(
+        ({ lastUrl }) =>
+          !lastUrl ||
+          isSimilarUrl(url, lastUrl) ||
+          isSameOriginUrl(url, lastUrl)
+      )
       .map(({ technology, pattern = {}, version, rootPath, lastUrl }) => ({
         technology: technology?.name,
         pattern: {

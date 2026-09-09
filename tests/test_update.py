@@ -250,6 +250,7 @@ const Driver = {
     assert "getSessionOption('tabResults', {})" in patched
     assert "typeof src !== 'undefined'" in patched
     assert "getRawDetectionsForTab(tab)" in patched
+    assert "isSameOriginUrl(url, lastUrl)" in patched
     assert "}, 0)" in patched
 
 
@@ -320,6 +321,7 @@ def test_generated_bundle_has_complete_scanner_patches():
     assert "setCachedOption('tracking', false)" in index
     assert "setCachedOption('showCached', false)" in index
     assert "getRawDetectionsForTab(tab)" in index
+    assert "isSameOriginUrl(url, lastUrl)" in index
     assert "async onXhrRequestComplete(request)" in index
     xhr_handler = index.split("async onXhrRequestComplete(request)", 1)[1].split(
         "\n  },\n\n  /**",
