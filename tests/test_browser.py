@@ -135,6 +135,66 @@ def test_process_url_uses_and_closes_a_fresh_page(monkeypatch):
     assert driver.page is None
 
 
+def test_complete_browser_stage_returns_raw_evidence_and_response_identity(monkeypatch):
+    class Response:
+        status = 202
+
+    driver = FakeDriver()
+    page = FakePage()
+
+    async def new_page():
+        return page
+
+    async def goto(url, **kwargs):
+        page.url = f"{url}/redirected"
+        return Response()
+
+    async def content():
+        return "<html><script>window.React = {}</script></html>"
+
+    async def no_stimulation(current_page):
+        return None
+
+    async def detections(current_driver, url, raw=False):
+        assert raw is True
+        return [
+            {
+                "technology": "React",
+                "version": "19.1.0",
+                "pattern": {
+                    "type": "js",
+                    "regex": "React",
+                    "confidence": 100,
+                    "match": "window.React",
+                },
+            }
+        ]
+
+    async def clear_state(current_driver, current_page):
+        return None
+
+    driver.context.new_page = new_page
+    page.goto = goto
+    page.content = content
+    monkeypatch.setattr(analyzer, "_stimulate_page", no_stimulation)
+    monkeypatch.setattr(analyzer, "_get_detections", detections)
+    monkeypatch.setattr(analyzer, "_clear_target_state", clear_state)
+
+    stage = asyncio.run(
+        analyzer.process_url_evidence(driver, "https://example.test")
+    )
+
+    assert stage.name.value == "browser"
+    assert stage.status.value == "success"
+    assert stage.response_identity.effective_url.endswith("/redirected")
+    assert stage.response_identity.http_status == 202
+    assert len(stage.response_identity.content_sha256) == 64
+    assert [(item.technology, item.channel) for item in stage.detections] == [
+        ("React", "js")
+    ]
+    assert page.closed
+
+
 def test_cleanup_failure_retires_driver_without_discarding_result(monkeypatch):
     driver = FakeDriver()
 
