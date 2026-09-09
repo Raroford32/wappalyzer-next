@@ -7,6 +7,9 @@
     "wappalyzer-extension.zip": "b5d505bdd176f49cb1284aca3497130f109a66bbbfd69d11663b9a05208929de"
   },
   "source": "https://addons.mozilla.org/firefox/downloads/latest/wappalyzer/platform:2/wappalyzer.xpi",
+  "source_identity": "wappalyzer@crunchlabz.com",
   "source_sha256": "3a369e5580a1b4864001c021e0f5b524a7f08968b438fb7d5d7cbe887e8cee89",
+  "source_signature": "jar-pkcs7-sha256",
+  "source_signing_ca_sha256": "16761bc97f84d14efb888f36fc923a971865ae001c9288fc4fa47212955bf4a2",
   "technology_count": 7291
 }

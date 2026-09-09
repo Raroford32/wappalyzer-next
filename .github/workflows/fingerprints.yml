@@ -19,8 +19,11 @@ jobs:
           python-version: "3.12"
           cache: pip
       - run: python -m pip install --upgrade . pytest
+      - name: Verify current publisher provenance and channel contract
+        run: pytest tests/test_update.py tests/test_channel_matrix.py tests/test_data_integrity.py
       - run: python .github/update.py --accept-source-update
-      - run: pytest
+      - name: Verify regenerated bundle and complete coverage matrix
+        run: pytest
       - uses: peter-evans/create-pull-request@v7
         with:
           branch: automated/wappalyzer-fingerprints

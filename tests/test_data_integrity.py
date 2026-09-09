@@ -21,7 +21,10 @@ def test_fingerprint_lock_matches_bundled_data():
 
     assert lock["technology_count"] == len(technologies)
     assert lock["source"].startswith("https://addons.mozilla.org/")
+    assert lock["source_identity"] == "wappalyzer@crunchlabz.com"
+    assert lock["source_signature"] == "jar-pkcs7-sha256"
     assert len(lock["source_sha256"]) == 64
+    assert len(lock["source_signing_ca_sha256"]) == 64
     assert set(lock["files"]) == {
         "categories.json",
         "groups.json",
@@ -89,6 +92,13 @@ def test_every_official_pattern_and_selector_compiles():
                     if compile_pattern(pattern)[0] is None
                 )
 
+    for name, probes in plan["probe"]:
+        invalid_patterns.extend(
+            ("probe", name, pattern)
+            for pattern in probes.values()
+            if compile_pattern(pattern)[0] is None
+        )
+
     invalid_selectors = []
 
     for name, dom in plan["dom"]:
@@ -98,6 +108,20 @@ def test_every_official_pattern_and_selector_compiles():
             for selector in selectors
             if compile_selector(parse_pattern(selector)[0]) is None
         )
+        if not isinstance(dom, dict):
+            continue
+        for rule in dom.values():
+            if not isinstance(rule, dict):
+                continue
+            for field in ("exists", "src", "text"):
+                if field in rule and compile_pattern(rule[field])[0] is None:
+                    invalid_patterns.append(("dom", name, rule[field]))
+            for field in ("attributes", "properties"):
+                invalid_patterns.extend(
+                    ("dom", name, pattern)
+                    for pattern in rule.get(field, {}).values()
+                    if compile_pattern(pattern)[0] is None
+                )
 
     assert not invalid_patterns
     assert not invalid_selectors

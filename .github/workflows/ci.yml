@@ -36,7 +36,35 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: pip
       - run: python -m pip install --upgrade --editable . pytest pytest-cov
-      - run: pytest --cov --cov-report=term-missing --cov-fail-under=45
+      - run: pytest --cov --cov-report=term-missing --cov-report=xml --cov-fail-under=70
+      - uses: actions/upload-artifact@v4
+        if: matrix.python-version == '3.12'
+        with:
+          name: python-coverage
+          path: coverage.xml
+
+  coverage-contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install --upgrade --editable . pytest
+      - name: Verify data, channel, schema, and lifecycle matrices
+        run: >-
+          pytest
+          tests/test_channel_matrix.py
+          tests/test_data_integrity.py
+          tests/test_models.py
+          tests/test_schema.py
+          tests/test_targets.py
+          tests/test_runstore.py
+          tests/test_stream_output.py
+          tests/test_pipeline.py
+          tests/test_resources.py
+          tests/test_update.py
 
   browser:
     runs-on: ubuntu-latest

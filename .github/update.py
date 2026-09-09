@@ -1,10 +1,14 @@
 import argparse
+import base64
+import binascii
 import hashlib
+import io
 import json
 import os
 import re
 import shutil
 import stat
+import subprocess
 import tempfile
 import urllib.request
 import zipfile
@@ -19,8 +23,49 @@ DATA_DIR = REPO_ROOT / "wappalyzer" / "data"
 EXTENSION_ARCHIVE = DATA_DIR / "wappalyzer-extension.zip"
 FINGERPRINT_LOCK = DATA_DIR / "fingerprints.lock.json"
 EXPECTED_SOURCE_SHA256 = "3a369e5580a1b4864001c021e0f5b524a7f08968b438fb7d5d7cbe887e8cee89"
+EXPECTED_EXTENSION_ID = "wappalyzer@crunchlabz.com"
+EXPECTED_EXTENSION_NAME = "Wappalyzer - Technology profiler"
+EXPECTED_SIGNING_CA_SHA256 = "16761bc97f84d14efb888f36fc923a971865ae001c9288fc4fa47212955bf4a2"
+SOURCE_SIGNATURE_FORMAT = "jar-pkcs7-sha256"
 MAX_EXTENSION_UNCOMPRESSED_BYTES = 512 * 1024 * 1024
 DETERMINISTIC_ZIP_DATETIME = (1980, 1, 1, 0, 0, 0)
+FINGERPRINT_METADATA_FIELDS = frozenset(
+    {
+        "cats",
+        "cpe",
+        "description",
+        "excludes",
+        "icon",
+        "implies",
+        "oss",
+        "pricing",
+        "requires",
+        "requiresCategory",
+        "saas",
+        "website",
+    }
+)
+SUPPORTED_DETECTION_FIELDS = frozenset(
+    {
+        "certIssuer",
+        "cookies",
+        "css",
+        "dns",
+        "dom",
+        "headers",
+        "html",
+        "js",
+        "meta",
+        "probe",
+        "robots",
+        "scriptSrc",
+        "scripts",
+        "text",
+        "url",
+        "xhr",
+    }
+)
+SUPPORTED_FINGERPRINT_FIELDS = FINGERPRINT_METADATA_FIELDS | SUPPORTED_DETECTION_FIELDS
 SOURCE_HASH_DECLARATION = re.compile(
     r'^EXPECTED_SOURCE_SHA256 = "[a-f0-9]{64}"$',
     re.MULTILINE,
@@ -76,6 +121,260 @@ def replace_once(content, old, new, description):
         raise RuntimeError(f"Failed to patch {description}")
 
     return content.replace(old, new, 1)
+
+
+def _parse_jar_sections(payload, description):
+    if not isinstance(payload, bytes):
+        raise TypeError(f"{description} must be bytes")
+
+    logical_lines = []
+    for line in payload.replace(b"\r\n", b"\n").replace(b"\r", b"\n").split(b"\n"):
+        if line.startswith(b" "):
+            if not logical_lines or logical_lines[-1] is None:
+                raise RuntimeError(f"Invalid {description}: orphan continuation")
+            logical_lines[-1] += line[1:]
+        else:
+            logical_lines.append(line or None)
+
+    sections = []
+    section = {}
+    for line in logical_lines + [None]:
+        if line is None:
+            if section:
+                sections.append(section)
+                section = {}
+            continue
+        if b": " not in line:
+            raise RuntimeError(f"Invalid {description}: malformed header")
+        key, value = line.split(b": ", 1)
+        try:
+            key = key.decode("ascii")
+            value = value.decode("utf-8")
+        except UnicodeDecodeError as error:
+            raise RuntimeError(f"Invalid {description}: invalid text encoding") from error
+        if key in section:
+            raise RuntimeError(f"Invalid {description}: duplicate {key}")
+        section[key] = value
+
+    if not sections:
+        raise RuntimeError(f"Invalid {description}: no sections")
+
+    return sections
+
+
+def _decode_sha256(value, description):
+    try:
+        digest = base64.b64decode(value, validate=True)
+    except (binascii.Error, ValueError) as error:
+        raise RuntimeError(f"Invalid {description}: malformed SHA-256 digest") from error
+    if len(digest) != hashlib.sha256().digest_size:
+        raise RuntimeError(f"Invalid {description}: malformed SHA-256 digest")
+    return digest
+
+
+def _openssl(*arguments, timeout=15):
+    try:
+        result = subprocess.run(
+            ("openssl", *arguments),
+            check=False,
+            capture_output=True,
+            timeout=timeout,
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise RuntimeError("OpenSSL is required to authenticate the extension source") from error
+    if result.returncode:
+        raise RuntimeError("Extension publisher signature verification failed")
+    return result.stdout
+
+
+def _certificate_blocks(payload):
+    return re.findall(
+        rb"-----BEGIN CERTIFICATE-----\r?\n.*?-----END CERTIFICATE-----\r?\n?",
+        payload,
+        flags=re.DOTALL,
+    )
+
+
+def verify_publisher_signature(
+    signature,
+    signed_content,
+    *,
+    expected_signing_ca_sha256=EXPECTED_SIGNING_CA_SHA256,
+):
+    if not re.fullmatch(r"[a-f0-9]{64}", expected_signing_ca_sha256):
+        raise ValueError("expected signing CA hash must be a lowercase SHA-256 digest")
+
+    with tempfile.TemporaryDirectory(prefix="wappalyzer-signature-") as tempdir:
+        tempdir = Path(tempdir)
+        signature_path = tempdir / "mozilla.rsa"
+        content_path = tempdir / "mozilla.sf"
+        certificates_path = tempdir / "certificates.pem"
+        signature_path.write_bytes(signature)
+        content_path.write_bytes(signed_content)
+        certificates_path.write_bytes(
+            _openssl(
+                "pkcs7",
+                "-inform",
+                "DER",
+                "-in",
+                str(signature_path),
+                "-print_certs",
+            )
+        )
+
+        trusted_certificate = None
+        for index, certificate in enumerate(
+            _certificate_blocks(certificates_path.read_bytes()),
+            start=1,
+        ):
+            certificate_path = tempdir / f"certificate-{index}.pem"
+            certificate_path.write_bytes(certificate)
+            certificate_der = _openssl(
+                "x509",
+                "-in",
+                str(certificate_path),
+                "-outform",
+                "DER",
+            )
+            if hashlib.sha256(certificate_der).hexdigest() == expected_signing_ca_sha256:
+                trusted_certificate = certificate_path
+                break
+
+        if trusted_certificate is None:
+            raise RuntimeError("Extension publisher signing CA does not match the pinned identity")
+
+        _openssl(
+            "smime",
+            "-verify",
+            "-inform",
+            "DER",
+            "-in",
+            str(signature_path),
+            "-content",
+            str(content_path),
+            "-CAfile",
+            str(trusted_certificate),
+            "-partial_chain",
+            "-purpose",
+            "any",
+            "-out",
+            os.devnull,
+        )
+
+
+def _verify_signed_members(archive, manifest_bytes, signature_manifest_bytes):
+    signature_sections = _parse_jar_sections(
+        signature_manifest_bytes,
+        "extension signature manifest",
+    )
+    expected_manifest_digest = _decode_sha256(
+        signature_sections[0].get("SHA256-Digest-Manifest", ""),
+        "extension signature manifest",
+    )
+    if hashlib.sha256(manifest_bytes).digest() != expected_manifest_digest:
+        raise RuntimeError("Extension signature manifest does not authenticate manifest.mf")
+
+    manifest_sections = _parse_jar_sections(manifest_bytes, "extension content manifest")
+    signed_members = set()
+    for section in manifest_sections[1:]:
+        name = section.get("Name")
+        if not name or name.startswith("/") or ".." in Path(name).parts:
+            raise RuntimeError("Invalid extension content manifest member name")
+        if name in signed_members:
+            raise RuntimeError(f"Duplicate signed extension member: {name}")
+        try:
+            content = archive.read(name)
+        except KeyError as error:
+            raise RuntimeError(f"Signed extension member is missing: {name}") from error
+        expected_digest = _decode_sha256(
+            section.get("SHA256-Digest", ""),
+            f"extension member {name}",
+        )
+        if hashlib.sha256(content).digest() != expected_digest:
+            raise RuntimeError(f"Signed extension member digest mismatch: {name}")
+        signed_members.add(name)
+
+    signature_members = {
+        "META-INF/manifest.mf",
+        "META-INF/mozilla.sf",
+        "META-INF/mozilla.rsa",
+    }
+    archive_members = {
+        item.filename
+        for item in archive.infolist()
+        if not item.is_dir() and item.filename not in signature_members
+    }
+    if signed_members != archive_members:
+        unsigned = sorted(archive_members - signed_members)
+        stale = sorted(signed_members - archive_members)
+        detail = f"unsigned={unsigned[:5]}, stale={stale[:5]}"
+        raise RuntimeError(f"Extension signed-member set mismatch: {detail}")
+
+
+def validate_source_archive(
+    archive_bytes,
+    *,
+    source_url=URL,
+    expected_source_sha256=EXPECTED_SOURCE_SHA256,
+    accept_source_update=False,
+    expected_signing_ca_sha256=EXPECTED_SIGNING_CA_SHA256,
+):
+    if source_url != DEFAULT_URL:
+        raise RuntimeError("Extension source URL does not match the pinned official endpoint")
+
+    source_sha256 = hashlib.sha256(archive_bytes).hexdigest()
+    if source_sha256 != expected_source_sha256 and not accept_source_update:
+        raise RuntimeError(
+            "Upstream extension changed; audit the new source before "
+            f"updating EXPECTED_SOURCE_SHA256 (received {source_sha256})"
+        )
+
+    try:
+        archive = zipfile.ZipFile(io.BytesIO(archive_bytes))
+    except (OSError, zipfile.BadZipFile) as error:
+        raise RuntimeError("Extension source is not a valid XPI archive") from error
+
+    with archive:
+        required_signature_members = (
+            "META-INF/manifest.mf",
+            "META-INF/mozilla.sf",
+            "META-INF/mozilla.rsa",
+        )
+        try:
+            manifest_bytes, signature_manifest_bytes, signature = (
+                archive.read(name) for name in required_signature_members
+            )
+            manifest = json.loads(archive.read("manifest.json"))
+        except (KeyError, json.JSONDecodeError, UnicodeDecodeError) as error:
+            raise RuntimeError(
+                "Extension source lacks authenticated provenance metadata"
+            ) from error
+
+        gecko = manifest.get("browser_specific_settings", {}).get("gecko", {}) or manifest.get(
+            "applications", {}
+        ).get("gecko", {})
+        if gecko.get("id") != EXPECTED_EXTENSION_ID:
+            raise RuntimeError("Extension source identity does not match Wappalyzer")
+        if manifest.get("name") != EXPECTED_EXTENSION_NAME:
+            raise RuntimeError("Extension source name does not match Wappalyzer")
+        version = manifest.get("version")
+        if not isinstance(version, str) or not re.fullmatch(r"\d+(?:\.\d+){1,3}", version):
+            raise RuntimeError("Extension source version is invalid")
+
+        verify_publisher_signature(
+            signature,
+            signature_manifest_bytes,
+            expected_signing_ca_sha256=expected_signing_ca_sha256,
+        )
+        _verify_signed_members(archive, manifest_bytes, signature_manifest_bytes)
+
+    return {
+        "extension_id": EXPECTED_EXTENSION_ID,
+        "extension_version": version,
+        "signature_format": SOURCE_SIGNATURE_FORMAT,
+        "signing_ca_sha256": expected_signing_ca_sha256,
+        "source_sha256": source_sha256,
+    }
 
 
 def patch_raw_tab_detections(content):
@@ -460,6 +759,14 @@ def relationship_names(value):
 
 def validate_fingerprints(technologies, categories, groups):
     errors = []
+    observed_fields = {field for technology in technologies.values() for field in technology}
+    unknown_fields = observed_fields - SUPPORTED_FINGERPRINT_FIELDS
+    missing_detection_fields = SUPPORTED_DETECTION_FIELDS - observed_fields
+
+    if unknown_fields:
+        errors.append(f"unsupported fingerprint fields: {sorted(unknown_fields)}")
+    if missing_detection_fields:
+        errors.append(f"missing detection fields: {sorted(missing_detection_fields)}")
 
     for name, technology in technologies.items():
         for category in technology.get("cats", []):
@@ -574,13 +881,11 @@ def main(accept_source_update=False):
         with urllib.request.urlopen(request, timeout=60) as response:
             archive_bytes = response.read()
 
-        source_sha256 = hashlib.sha256(archive_bytes).hexdigest()
-
-        if source_sha256 != EXPECTED_SOURCE_SHA256 and not accept_source_update:
-            raise RuntimeError(
-                "Upstream extension changed; audit the new source before "
-                f"updating EXPECTED_SOURCE_SHA256 (received {source_sha256})"
-            )
+        provenance = validate_source_archive(
+            archive_bytes,
+            accept_source_update=accept_source_update,
+        )
+        source_sha256 = provenance["source_sha256"]
 
         archive_path.write_bytes(archive_bytes)
 
@@ -644,6 +949,9 @@ def main(accept_source_update=False):
                     "source": URL,
                     "source_sha256": source_sha256,
                     "extension_version": manifest.get("version"),
+                    "source_identity": provenance["extension_id"],
+                    "source_signature": provenance["signature_format"],
+                    "source_signing_ca_sha256": provenance["signing_ca_sha256"],
                     "technology_count": len(technologies),
                     "files": generated_hashes,
                 },
