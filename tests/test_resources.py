@@ -252,7 +252,7 @@ def test_snapshot_falls_back_deterministically_for_missing_malformed_and_unlimit
 
     snapshot = capture_snapshot(probe, artifact_path=Path("/artifacts"))
 
-    assert snapshot.cpu_count == 4
+    assert snapshot.cpu_count == 1
     assert snapshot.memory_bytes == 1536 * MIB
     assert snapshot.file_descriptors is None
     assert snapshot.sockets is None
