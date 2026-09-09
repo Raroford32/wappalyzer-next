@@ -271,7 +271,11 @@ def test_protocol_serialization_round_trips_rich_ordered_evidence():
     assert document[1]["stages"][0]["response_identity"]["http_status"] == 200
     assert document[1]["stages"][0]["technologies"][0]["categories"] == ["Web servers"]
     assert document[1]["stages"][0]["truncations"][0]["limits"] == ["count", "bytes"]
-    assert runstore_module._deserialize_protocols(payload) == (empty, rich)
+    restored = runstore_module._deserialize_protocols(payload)
+    assert restored[0] == empty
+    assert restored[1].technologies[0].categories == ("Web servers",)
+    assert restored[1].error_codes == (FailureCode.SCAN_TIMEOUT,)
+    assert runstore_module._serialize_protocols(restored) == payload
 
 
 def test_protocol_deserializer_rejects_structural_and_canonical_corruption():
