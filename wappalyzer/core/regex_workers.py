@@ -132,8 +132,9 @@ class RegexWorkerPool:
             raise ValueError("timeout must be positive")
 
         self._acquire_slot()
+        replacement = False
         try:
-            for attempt in range(2):
+            while True:
                 executor = self._current_executor()
                 try:
                     future = executor.submit(function, *args)
@@ -145,11 +146,11 @@ class RegexWorkerPool:
                     ) from error
                 except BrokenProcessPool as error:
                     self._invalidate(executor)
-                    if attempt:
+                    if replacement:
                         raise RegexWorkerError(
                             "regex worker pool failed after replacement"
                         ) from error
-            raise RegexWorkerError("regex worker pool retry exhausted")
+                    replacement = True
         finally:
             self._slots.release()
 
