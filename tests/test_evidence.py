@@ -208,9 +208,35 @@ def test_coherent_stages_resolve_once_but_divergent_observations_stay_separate()
         "StaticTech",
     ]
     assert divergent.observation is ProtocolObservation.MULTI
-    assert divergent.status is ProtocolStatus.SUCCESS
+    assert divergent.status is ProtocolStatus.PARTIAL
     assert divergent.technologies == ()
     assert [stage.technologies[0].name for stage in divergent.stages] == [
         "StaticTech",
         "RuntimeTech",
     ]
+
+
+def test_missing_stage_identity_is_partial_multi_observation():
+    static = StageEvidence(
+        name=StageName.STATIC,
+        status=StageStatus.SUCCESS,
+        response_identity=identity(),
+        detections=(raw("StaticTech", "robots", "robots-pattern"),),
+    )
+    browser = StageEvidence(
+        name=StageName.BROWSER,
+        status=StageStatus.SUCCESS,
+        response_identity=None,
+        detections=(raw("RuntimeTech", "js", "global-pattern"),),
+    )
+
+    result = merge_stage_evidence(
+        protocol=Protocol.HTTP,
+        requested_url="http://192.0.2.1:8080/",
+        tls=TLSMetadata(present=False, trust=TLSTrust.NOT_APPLICABLE),
+        stages=(static, browser),
+    )
+
+    assert result.observation is ProtocolObservation.MULTI
+    assert result.status is ProtocolStatus.PARTIAL
+    assert result.technologies == ()
