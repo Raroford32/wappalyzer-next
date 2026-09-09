@@ -397,6 +397,26 @@ def test_snapshot_records_each_malformed_controller_and_clamps_exhausted_nofile(
     assert "pids.max" in " ".join(snapshot.reasons)
 
 
+def test_snapshot_handles_fully_missing_memory_and_process_limits():
+    snapshot = capture_snapshot(
+        FakeProbe(
+            host_memory=2 * GIB,
+            files={
+                "/sys/fs/cgroup/memory.max": None,
+                "/sys/fs/cgroup/memory.current": None,
+                "/sys/fs/cgroup/pids.max": None,
+                "/sys/fs/cgroup/pids.current": None,
+            },
+        )
+    )
+
+    assert snapshot.memory_bytes == 1536 * MIB
+    assert snapshot.processes is None
+    assert snapshot.processes_used == 0
+    assert "/sys/fs/cgroup/memory.max" in " ".join(snapshot.reasons)
+    assert "/sys/fs/cgroup/pids.max" in " ".join(snapshot.reasons)
+
+
 def test_snapshot_survives_platform_and_controller_probe_failures():
     class UnavailableProbe(FakeProbe):
         def host_cpu_count(self):

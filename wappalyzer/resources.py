@@ -1001,16 +1001,16 @@ class ResourceBroker:
                         and self._in_use.fits_within(self._capacity)
                         and request.fits_within(available)
                     ):
-                        self._waiters.pop(0)
-                        self._in_use += request
-                        self._condition.notify_all()
-                        return ResourceLease(self, request)
+                        break
                     self._condition.wait(timeout=0.05 if cancel_event is not None else None)
             except BaseException:
-                if waiter in self._waiters:
-                    self._waiters.remove(waiter)
-                    self._condition.notify_all()
+                self._waiters.remove(waiter)
+                self._condition.notify_all()
                 raise
+            self._waiters.pop(0)
+            self._in_use += request
+            self._condition.notify_all()
+            return ResourceLease(self, request)
 
     def _release(self, request):
         with self._condition:
