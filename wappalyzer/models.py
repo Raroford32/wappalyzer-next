@@ -105,6 +105,20 @@ class ChannelOwner(StringEnum):
     BROWSER = "browser"
 
 
+class ProtocolObservation(StringEnum):
+    SINGLE = "single_observation"
+    MULTI = "multi_observation"
+
+
+class EvidenceLimit(StringEnum):
+    COUNT = "count"
+    BYTES = "bytes"
+    TIMER = "timer"
+    REDIRECT = "redirect"
+    POLICY = "policy"
+    WORKER = "worker"
+
+
 def _require_int(name: str, value: int, minimum: int = 0) -> None:
     if type(value) is not int or value < minimum:
         raise ValueError(f"{name} must be an integer greater than or equal to {minimum}")
@@ -219,10 +233,45 @@ class Technology:
 
 
 @dataclass(frozen=True)
+class ResponseIdentity:
+    effective_url: str
+    http_status: int
+    content_sha256: str
+
+    def __post_init__(self) -> None:
+        _require_text("effective_url", self.effective_url)
+        _require_int("http_status", self.http_status, 100)
+        if self.http_status > 599:
+            raise ValueError("http_status must be no greater than 599")
+        _require_digest("content_sha256", self.content_sha256)
+
+
+@dataclass(frozen=True)
+class EvidenceTruncation:
+    channel: str
+    limits: Tuple[EvidenceLimit, ...]
+
+    def __post_init__(self) -> None:
+        _require_text("channel", self.channel)
+        if self.channel not in CHANNEL_REGISTRY:
+            raise ValueError(f"unknown evidence channel: {self.channel}")
+        limits = _as_tuple(self.limits)
+        _require_members("limits", limits, EvidenceLimit)
+        if not limits:
+            raise ValueError("limits must not be empty")
+        if len(set(limits)) != len(limits):
+            raise ValueError("limits must not contain duplicates")
+        object.__setattr__(self, "limits", limits)
+
+
+@dataclass(frozen=True)
 class StageResult:
     name: StageName
     status: StageStatus
     error_codes: Tuple[FailureCode, ...] = ()
+    response_identity: Optional[ResponseIdentity] = None
+    technologies: Tuple[Technology, ...] = ()
+    truncations: Tuple[EvidenceTruncation, ...] = ()
 
     def __post_init__(self) -> None:
         if not isinstance(self.name, StageName):
@@ -230,8 +279,25 @@ class StageResult:
         if not isinstance(self.status, StageStatus):
             raise TypeError("status must be a StageStatus")
         error_codes = _as_tuple(self.error_codes)
+        technologies = _as_tuple(self.technologies)
+        truncations = _as_tuple(self.truncations)
         _require_members("error_codes", error_codes, FailureCode)
+        if self.response_identity is not None and not isinstance(
+            self.response_identity,
+            ResponseIdentity,
+        ):
+            raise TypeError("response_identity must be a ResponseIdentity or None")
+        _require_members("technologies", technologies, Technology)
+        _require_members("truncations", truncations, EvidenceTruncation)
+        if len({technology.name for technology in technologies}) != len(technologies):
+            raise ValueError("technologies must contain at most one result per name")
+        if len({truncation.channel for truncation in truncations}) != len(truncations):
+            raise ValueError("truncations must contain at most one result per channel")
+        if truncations and self.status is not StageStatus.PARTIAL:
+            raise ValueError("truncated stage evidence must have partial status")
         object.__setattr__(self, "error_codes", error_codes)
+        object.__setattr__(self, "technologies", technologies)
+        object.__setattr__(self, "truncations", truncations)
 
 
 @dataclass(frozen=True)
@@ -242,6 +308,7 @@ class ProtocolResult:
     effective_url: str
     http_status: Optional[int]
     tls: TLSMetadata
+    observation: ProtocolObservation = ProtocolObservation.SINGLE
     stages: Tuple[StageResult, ...] = ()
     technologies: Tuple[Technology, ...] = ()
     error_codes: Tuple[FailureCode, ...] = ()
@@ -259,6 +326,8 @@ class ProtocolResult:
                 raise ValueError("http_status must be no greater than 599")
         if not isinstance(self.tls, TLSMetadata):
             raise TypeError("tls must be TLSMetadata")
+        if not isinstance(self.observation, ProtocolObservation):
+            raise TypeError("observation must be a ProtocolObservation")
         stages = _as_tuple(self.stages)
         technologies = _as_tuple(self.technologies)
         error_codes = _as_tuple(self.error_codes)
@@ -269,6 +338,8 @@ class ProtocolResult:
             raise ValueError("stages must contain at most one result per stage")
         if len({technology.name for technology in technologies}) != len(technologies):
             raise ValueError("technologies must contain at most one result per name")
+        if self.observation is ProtocolObservation.MULTI and technologies:
+            raise ValueError("multi-observation results must keep technologies stage-scoped")
         object.__setattr__(self, "stages", stages)
         object.__setattr__(self, "technologies", technologies)
         object.__setattr__(self, "error_codes", error_codes)
@@ -485,7 +556,11 @@ def _channel(owner: ChannelOwner, name: str) -> ChannelRegistration:
 CHANNEL_REGISTRY: Mapping[str, ChannelRegistration] = MappingProxyType(
     {
         name: _channel(
-            ChannelOwner.BROWSER if name in {"js", "xhr"} else ChannelOwner.STATIC,
+            (
+                ChannelOwner.STATIC
+                if name in {"certIssuer", "dns", "probe", "robots"}
+                else ChannelOwner.BROWSER
+            ),
             name,
         )
         for name in (
