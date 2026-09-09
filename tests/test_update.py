@@ -54,6 +54,10 @@ const Driver = {
     return tabId
   },
 
+  async getDetectionsForTab(tab) {
+    return tab
+  },
+
   analyzeDom() {
     const result = ({ name, selector, exists, text, property, attribute, value }, index)
 
@@ -72,6 +76,7 @@ const Driver = {
     assert "setCachedOption('tracking', false)" in patched
     assert "getSessionOption('tabResults', {})" in patched
     assert "typeof src !== 'undefined'" in patched
+    assert "getRawDetectionsForTab(tab)" in patched
 
 
 def test_upstream_source_hash_is_pinned_to_bundled_generation():
@@ -140,6 +145,7 @@ def test_generated_bundle_has_complete_scanner_patches():
 
     assert "setCachedOption('tracking', false)" in index
     assert "setCachedOption('showCached', false)" in index
+    assert "getRawDetectionsForTab(tab)" in index
     assert "data-wappalyzer-scanner-state" in content
     assert "return !!(html || text || css || scripts.length)" in content
     assert "function repairSelector(selector)" in content

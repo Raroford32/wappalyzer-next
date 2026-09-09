@@ -4,6 +4,13 @@ import zipfile
 import pytest
 
 from wappalyzer.browser import analyzer
+from wappalyzer.models import ChannelOwner
+
+
+def test_extension_bridge_requests_raw_channel_tagged_detections():
+    assert "func: 'getRawDetectionsForTab'" in analyzer.GET_DETECTIONS_FOR_TAB_SCRIPT
+    assert "type: pattern.type" in analyzer.GET_DETECTIONS_FOR_TAB_SCRIPT
+    assert "match: pattern.match" in analyzer.GET_DETECTIONS_FOR_TAB_SCRIPT
 
 
 class FakePage:
@@ -169,6 +176,40 @@ def test_browser_detection_versions_merge_deterministically():
     assert forward == reverse
     assert forward["React"]["version"] == "10"
     assert forward["React"]["confidence"] == 100
+
+
+def test_browser_raw_detections_require_channel_provenance_and_filter_ownership():
+    detections = [
+        {
+            "technology": "React",
+            "version": "19.1.0",
+            "pattern": {
+                "type": "js",
+                "regex": r"^React$",
+                "confidence": 50,
+                "match": "window.React",
+            },
+        },
+        {
+            "technology": "RobotsTech",
+            "pattern": {
+                "type": "robots",
+                "regex": "private",
+                "confidence": 100,
+                "match": "Disallow: /private",
+            },
+        },
+        {"technology": "MissingChannel", "pattern": {"confidence": 100}},
+    ]
+
+    raw = analyzer.raw_browser_detections(detections)
+
+    assert [(item.technology, item.channel) for item in raw] == [("React", "js")]
+    assert raw[0].version == "19.1.0"
+    assert raw[0].confidence == 50
+    assert len(raw[0].source_key) == 64
+    assert len(raw[0].evidence_sha256) == 64
+    assert analyzer.CHANNEL_REGISTRY["js"].owner is ChannelOwner.BROWSER
 
 
 def test_extension_archive_rejects_path_traversal(tmp_path):
