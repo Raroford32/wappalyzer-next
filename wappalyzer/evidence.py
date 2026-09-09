@@ -219,10 +219,15 @@ def merge_stage_evidence(
 
     ordered_stages = tuple(sorted(stages, key=lambda item: _STAGE_ORDER[item.name]))
     stage_results = tuple(_stage_result(stage) for stage in ordered_stages)
+    evidence_bearing_stages = tuple(stage for stage in ordered_stages if stage.detections)
     identities = {
-        stage.response_identity for stage in ordered_stages if stage.response_identity is not None
+        stage.response_identity
+        for stage in evidence_bearing_stages
+        if stage.response_identity is not None
     }
-    identity_missing = any(stage.response_identity is None for stage in ordered_stages)
+    identity_missing = any(
+        stage.response_identity is None for stage in evidence_bearing_stages
+    )
     observation = (
         ProtocolObservation.MULTI
         if len(identities) > 1 or (identities and identity_missing)
