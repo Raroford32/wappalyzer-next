@@ -28,8 +28,8 @@ from wappalyzer.core.regex_workers import RegexWorkerPool
 from wappalyzer.core.requester import DEFAULT_READ_TIMEOUT
 from wappalyzer.evidence import StageEvidence, merge_stage_evidence
 from wappalyzer.models import (
-    FailureCode,
     Endpoint,
+    FailureCode,
     Protocol,
     StageName,
     StageStatus,
