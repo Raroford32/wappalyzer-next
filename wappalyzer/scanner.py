@@ -4,6 +4,7 @@ import multiprocessing
 import os
 import sys
 import threading
+import time
 from concurrent.futures.process import BrokenProcessPool
 from pathlib import Path
 
@@ -12,9 +13,23 @@ from wappalyzer.browser.analyzer import (
     cookie_to_cookies,
     merge_technologies,
     process_url,
+    process_url_evidence,
 )
-from wappalyzer.core.analyzer import asset_worker_count, http_scan
-from wappalyzer.core.requester import DEFAULT_READ_TIMEOUT
+from wappalyzer.core.analyzer import (
+    ScanRequestError,
+    analyze_static_stage,
+    asset_worker_count,
+    http_scan,
+)
+from wappalyzer.core.requester import DEFAULT_READ_TIMEOUT, get_response
+from wappalyzer.evidence import StageEvidence, merge_stage_evidence
+from wappalyzer.models import (
+    FailureCode,
+    Protocol,
+    StageName,
+    StageStatus,
+    TLSMetadata,
+)
 from wappalyzer.resources import (
     DEFAULT_RESOURCE_PROFILE,
     ResourceBroker,
@@ -107,6 +122,20 @@ def _http_scan_job(url, scan_type, cookie, timeout, asset_workers):
     )
 
 
+def _static_stage_job(url, cookie, timeout, asset_workers):
+    deadline = time.monotonic() + timeout
+    response = get_response(url, cookie, timeout=timeout)
+    if response is None:
+        raise ScanRequestError(f"Unable to fetch {url}")
+    return analyze_static_stage(
+        response,
+        cookie=cookie,
+        timeout=timeout,
+        deadline=deadline,
+        asset_workers=asset_workers,
+    )
+
+
 class _LoopRunner:
     def __init__(self):
         self.loop = asyncio.new_event_loop()
@@ -171,6 +200,17 @@ class _FullScanBackend:
             return result_url, merge_technologies(detections)
 
         return await asyncio.wait_for(scan(), timeout=self.timeout)
+
+    async def analyze_evidence(self, url, cookie=None):
+        await self.ensure_pool(1)
+        async with self.pool.get_driver() as driver:
+            if cookie:
+                for cookie_dict in cookie_to_cookies(cookie):
+                    driver.add_cookie(cookie_dict)
+            return await asyncio.wait_for(
+                process_url_evidence(driver, url),
+                timeout=self.timeout,
+            )
 
     async def analyze_many(self, urls, cookie=None, on_result=None, on_error=None):
         urls = [url for url in urls if url]
@@ -244,6 +284,111 @@ class _FullScanBackend:
         if self.pool:
             await self.pool.cleanup()
             self.pool = None
+
+
+class CompleteScanExecutor:
+    def __init__(
+        self,
+        *,
+        browser_runner,
+        static_runner=_static_stage_job,
+        timeout=DEFAULT_READ_TIMEOUT,
+        static_workers=1,
+        asset_workers=1,
+    ):
+        if not callable(static_runner):
+            raise TypeError("static_runner must be callable")
+        if not callable(browser_runner):
+            raise TypeError("browser_runner must be callable")
+        if timeout < 1:
+            raise ValueError("timeout must be at least 1 second")
+        if static_workers < 1:
+            raise ValueError("static_workers must be at least one")
+        if asset_workers < 1:
+            raise ValueError("asset_workers must be at least one")
+        self.static_runner = static_runner
+        self.browser_runner = browser_runner
+        self.timeout = timeout
+        self.asset_workers = asset_workers
+        self._static_executor = concurrent.futures.ThreadPoolExecutor(
+            max_workers=static_workers,
+        )
+        self._closed = False
+
+    @staticmethod
+    def _failed_stage(name, error):
+        failure_code = (
+            FailureCode.SCAN_TIMEOUT
+            if isinstance(error, (TimeoutError, asyncio.TimeoutError))
+            else FailureCode.WORKER_FAILURE
+        )
+        return StageEvidence(
+            name=name,
+            status=StageStatus.INDETERMINATE,
+            response_identity=None,
+            error_codes=(failure_code,),
+        )
+
+    @classmethod
+    def _stage_or_failure(cls, expected_name, value):
+        if isinstance(value, asyncio.CancelledError):
+            raise value
+        if isinstance(value, BaseException):
+            return cls._failed_stage(expected_name, value)
+        if not isinstance(value, StageEvidence) or value.name is not expected_name:
+            return cls._failed_stage(
+                expected_name,
+                TypeError(f"{expected_name.value} runner returned invalid evidence"),
+            )
+        return value
+
+    async def analyze_protocol(self, url, protocol, tls, cookie=None):
+        if self._closed:
+            raise RuntimeError("complete scan executor is closed")
+        if not isinstance(protocol, Protocol):
+            raise TypeError("protocol must be a Protocol")
+        if not isinstance(tls, TLSMetadata):
+            raise TypeError("tls must be TLSMetadata")
+
+        loop = asyncio.get_running_loop()
+        static_future = loop.run_in_executor(
+            self._static_executor,
+            self.static_runner,
+            url,
+            cookie,
+            self.timeout,
+            self.asset_workers,
+        )
+        browser_future = asyncio.ensure_future(self.browser_runner(url, cookie))
+        static_value, browser_value = await asyncio.gather(
+            static_future,
+            browser_future,
+            return_exceptions=True,
+        )
+        stages = (
+            self._stage_or_failure(StageName.STATIC, static_value),
+            self._stage_or_failure(StageName.BROWSER, browser_value),
+        )
+        return merge_stage_evidence(
+            protocol=protocol,
+            requested_url=url,
+            tls=tls,
+            stages=stages,
+        )
+
+    def close(self):
+        if self._closed:
+            return
+        self._closed = True
+        self._static_executor.shutdown(wait=True, cancel_futures=True)
+
+    def __enter__(self):
+        if self._closed:
+            raise RuntimeError("complete scan executor is closed")
+        return self
+
+    def __exit__(self, exc_type, exc, traceback):
+        self.close()
 
 
 class Wappalyzer:

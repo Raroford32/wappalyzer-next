@@ -225,7 +225,7 @@ def merge_stage_evidence(
     identity_missing = any(stage.response_identity is None for stage in ordered_stages)
     observation = (
         ProtocolObservation.MULTI
-        if len(ordered_stages) > 1 and (identity_missing or len(identities) > 1)
+        if len(identities) > 1 or (identities and identity_missing)
         else ProtocolObservation.SINGLE
     )
     technologies = (
