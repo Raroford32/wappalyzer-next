@@ -809,6 +809,28 @@ def test_verify_source_detects_concurrent_verifier_before_ready_commit(
         store.close()
 
 
+def test_verify_source_rejects_digest_mismatch_with_stable_file_identity(
+    tmp_path,
+    monkeypatch,
+):
+    raw = b"192.0.2.10:80\n"
+    source = tmp_path / "targets"
+    source.write_bytes(raw)
+    store = RunStore.create(tmp_path / "generation", "run", _run_spec(raw))
+    store.ingest(source)
+    monkeypatch.setattr(
+        runstore_module,
+        "_stream_sha256",
+        lambda _stream: (len(raw), "0" * 64),
+    )
+    try:
+        with pytest.raises(SourceChangedError, match="changed"):
+            store.verify_source(source)
+        assert store.status is RunStatus.INGESTING
+    finally:
+        store.close()
+
+
 @pytest.mark.parametrize("mutation", ["disappear", "change"])
 def test_verify_source_rechecks_path_inside_ready_transaction(
     tmp_path,
@@ -1138,6 +1160,20 @@ def test_transitions_enforce_types_source_verification_and_fallthrough(tmp_path)
         store.close()
 
 
+def test_ready_transition_accepts_durable_source_verification_fact(tmp_path):
+    raw = b""
+    source = tmp_path / "targets"
+    source.write_bytes(raw)
+    store = RunStore.create(tmp_path / "generation", "run", _run_spec(raw))
+    store.ingest(source)
+    _set_metadata(store, "source_verified", "1")
+    try:
+        store.transition(RunStatus.READY)
+        assert store.status is RunStatus.READY
+    finally:
+        store.close()
+
+
 def test_execution_completion_requires_outbox_frontier(tmp_path):
     store = _executing_store(tmp_path, b"invalid\n")
     try:
@@ -1379,8 +1415,15 @@ def test_advance_projection_validates_types_order_fencing_and_outbox_bounds(tmp_
             store.advance_projection(ProjectionState(0, 0, "0" * 64), valid)
         with pytest.raises(LedgerIntegrityError, match="exceeds"):
             store.advance_projection(initial, ProjectionState(2, 2, "a" * 64))
+        with pytest.raises(LedgerIntegrityError, match="does not match"):
+            store.advance_projection(
+                initial,
+                ProjectionState(1, valid.byte_offset + 1, valid.prefix_sha256),
+            )
         with pytest.raises(LedgerIntegrityError, match="empty"):
             store.advance_projection(initial, ProjectionState(0, 1, "a" * 64))
+        store.advance_projection(initial, initial)
+        assert store.projection_state == initial
         store.advance_projection(initial, valid)
         assert store.projection_state == valid
     finally:
@@ -1537,6 +1580,7 @@ def test_acquired_generation_rejects_enter_after_close(tmp_path):
 def test_repository_rejects_unsafe_generation_entry(tmp_path):
     root = tmp_path / "artifacts"
     root.mkdir()
+    (root / "README").write_text("unrelated repository metadata")
     (root / "generation-not-a-directory").write_bytes(b"unsafe")
 
     with pytest.raises(ArtifactSafetyError, match="real directory"):
