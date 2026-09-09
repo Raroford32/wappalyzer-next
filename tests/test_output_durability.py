@@ -199,6 +199,34 @@ def test_open_projection_maps_symlink_errors_to_artifact_safety(
         output_module._open_projection(path)
 
 
+@pytest.mark.parametrize("failure_point", ["initial", "create", "race_reopen"])
+def test_open_projection_preserves_non_alias_io_failures(
+    tmp_path,
+    monkeypatch,
+    failure_point,
+):
+    path = tmp_path / "canonical.ndjson"
+    calls = 0
+
+    def failing_open(_candidate, _flags, _mode=0o777):
+        nonlocal calls
+        calls += 1
+        if failure_point == "initial" or (
+            failure_point == "create" and calls == 2
+        ) or (failure_point == "race_reopen" and calls == 3):
+            raise OSError(errno.EIO, "storage failure")
+        if calls == 1:
+            raise FileNotFoundError(str(path))
+        raise FileExistsError(str(path))
+
+    monkeypatch.setattr(output_module.os, "open", failing_open)
+
+    with pytest.raises(OSError, match="storage failure") as failure:
+        output_module._open_projection(path)
+
+    assert failure.value.errno == errno.EIO
+
+
 def test_open_projection_rejects_hardlink_and_closes_descriptor(tmp_path):
     original = tmp_path / "original"
     projection = tmp_path / "canonical.ndjson"
