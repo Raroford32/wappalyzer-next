@@ -17,6 +17,7 @@ except ImportError:  # pragma: no cover - the production CLI currently targets P
     fcntl = None  # type: ignore[assignment]
 
 from wappalyzer.models import (
+    PROTOCOL_ORDER,
     CanonicalRecord,
     ClaimToken,
     Endpoint,
@@ -25,7 +26,6 @@ from wappalyzer.models import (
     FailureCode,
     FailureDisposition,
     OccurrenceStatus,
-    PROTOCOL_ORDER,
     Protocol,
     ProtocolResult,
     ProtocolStatus,
@@ -1709,10 +1709,7 @@ class RunStore:
                 raise LedgerIntegrityError("terminal occurrence has no endpoint result")
             if endpoint_id not in endpoint_results:
                 result_payload = bytes(row["result_payload"])
-                if (
-                    hashlib.sha256(result_payload).hexdigest()
-                    != row["result_payload_sha256"]
-                ):
+                if hashlib.sha256(result_payload).hexdigest() != row["result_payload_sha256"]:
                     raise LedgerIntegrityError("endpoint result digest is inconsistent")
                 endpoint_results[endpoint_id] = _deserialize_protocols(result_payload)
             protocols = endpoint_results[endpoint_id]
