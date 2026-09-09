@@ -30,6 +30,15 @@ class FakeSession:
         return self.response
 
 
+def test_thread_local_sessions_do_not_multiply_connection_pools():
+    session = requester._new_session()
+    try:
+        assert session.adapters["http://"]._pool_maxsize == 1
+        assert session.adapters["https://"]._pool_maxsize == 1
+    finally:
+        session.close()
+
+
 def test_request_defaults_to_verified_tls_and_bounded_timeouts():
     response = FakeResponse([b"hello", b" world"])
     session = FakeSession(response)

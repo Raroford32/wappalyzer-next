@@ -3,6 +3,7 @@ import asyncio
 import pytest
 
 from wappalyzer import scanner
+from wappalyzer.resources import GIB, ResourceSnapshot
 
 
 def test_automatic_http_workers_follow_cpu_allocation(monkeypatch):
@@ -72,12 +73,35 @@ def test_asset_worker_override_is_passed_without_global_mutation(monkeypatch):
         return url, {}
 
     monkeypatch.setenv("WAPPALYZER_ASSET_WORKERS", "7")
+    monkeypatch.setattr(scanner, "_available_cpu_count", lambda: 2)
     monkeypatch.setattr(scanner, "_http_scan_job", fake_job)
 
     with scanner.Wappalyzer(scan_type="fast", workers=1) as instance:
         instance.analyze_many(["https://a.test"])
 
-    assert seen_asset_workers == [7]
+    assert seen_asset_workers == [2]
+
+
+def test_manual_workers_are_clamped_to_the_resource_snapshot():
+    snapshot = ResourceSnapshot(
+        cpu_count=2,
+        memory_bytes=4 * GIB,
+        file_descriptors=256,
+        sockets=128,
+        processes=64,
+        shared_memory_bytes=2 * GIB,
+        temp_bytes=2 * GIB,
+        artifact_bytes=None,
+    )
+
+    with scanner.Wappalyzer(
+        scan_type="fast",
+        workers=20,
+        resource_snapshot=snapshot,
+    ) as instance:
+        assert instance.workers == 2
+        assert instance.resource_plan.requested.static == 20
+        assert instance.resource_plan.selected.static == 2
 
 
 def test_http_results_and_callbacks_follow_input_order(monkeypatch):

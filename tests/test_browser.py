@@ -179,3 +179,24 @@ def test_extension_archive_rejects_path_traversal(tmp_path):
 
     with pytest.raises(RuntimeError, match="Unsafe extension archive path"):
         analyzer._prepare_extension_dir(archive_path)
+
+
+def test_browser_pool_growth_is_incremental_to_avoid_startup_spikes(monkeypatch):
+    pool = analyzer.DriverPool(size=0)
+    active = 0
+    peak = 0
+
+    async def create_driver():
+        nonlocal active, peak
+        active += 1
+        peak = max(peak, active)
+        await asyncio.sleep(0)
+        active -= 1
+        return object()
+
+    monkeypatch.setattr(pool, "_create_driver", create_driver)
+
+    asyncio.run(pool.grow_to(4))
+
+    assert pool.size == 4
+    assert peak == 1
