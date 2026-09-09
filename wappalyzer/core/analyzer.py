@@ -147,9 +147,7 @@ class AssetBudget:
     @property
     def truncations(self):
         return {
-            channel: tuple(
-                sorted(limits, key=lambda limit: list(EvidenceLimit).index(limit))
-            )
+            channel: tuple(sorted(limits, key=lambda limit: list(EvidenceLimit).index(limit)))
             for channel, limits in sorted(self._truncations.items())
         }
 
@@ -341,9 +339,7 @@ def collect_evidence(
                     "scripts",
                 )
                 scripts.extend(
-                    fetched_scripts[url]
-                    for url in script_sources
-                    if fetched_scripts.get(url)
+                    fetched_scripts[url] for url in script_sources if fetched_scripts.get(url)
                 )
             else:
                 asset_budget.truncate("scripts", EvidenceLimit.TIMER)
@@ -657,9 +653,7 @@ def analyze_from_response(
             "categories": list(technology.categories),
             "groups": list(technology.groups),
         }
-        for technology in resolve_raw_detections(
-            collect_raw_detections(evidence)
-        )
+        for technology in resolve_raw_detections(collect_raw_detections(evidence))
     }
 
 

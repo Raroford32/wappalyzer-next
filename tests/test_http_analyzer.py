@@ -164,9 +164,7 @@ def test_complete_static_stage_emits_only_static_owned_raw_channels(monkeypatch)
         owner=ChannelOwner.STATIC,
     )
 
-    assert [(item.technology, item.channel) for item in detections] == [
-        ("RobotsTech", "robots")
-    ]
+    assert [(item.technology, item.channel) for item in detections] == [("RobotsTech", "robots")]
 
 
 def test_primary_request_failure_is_not_reported_as_empty_success(monkeypatch):
