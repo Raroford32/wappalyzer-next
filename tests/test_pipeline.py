@@ -185,34 +185,37 @@ def test_pipeline_bounds_claims_keeps_workers_busy_and_projects_in_input_order(t
     active = 0
     maximum_active = 0
     fast_completed_before_first = 0
-    first_complete = False
 
-    async def scan(endpoint):
-        nonlocal active
-        nonlocal fast_completed_before_first
-        nonlocal first_complete
-        nonlocal maximum_active
-        active += 1
-        maximum_active = max(maximum_active, active)
-        try:
-            if endpoint.address == "192.0.2.1":
-                await asyncio.sleep(0.15)
-                first_complete = True
-            else:
-                await asyncio.sleep(0.005)
-                if not first_complete:
+    async def exercise():
+        enough_fast_completions = asyncio.Event()
+
+        async def scan(endpoint):
+            nonlocal active
+            nonlocal fast_completed_before_first
+            nonlocal maximum_active
+            active += 1
+            maximum_active = max(maximum_active, active)
+            try:
+                if endpoint.address == "192.0.2.1":
+                    await enough_fast_completions.wait()
+                else:
+                    await asyncio.sleep(0)
                     fast_completed_before_first += 1
-            return protocol_results(endpoint)
-        finally:
-            active -= 1
+                    if fast_completed_before_first >= 8:
+                        enough_fast_completions.set()
+                return protocol_results(endpoint)
+            finally:
+                active -= 1
 
-    pipeline = BoundedScanPipeline(
-        store=store,
-        scan_endpoint=scan,
-        projector=CanonicalProjector(store),
-        max_inflight=4,
-    )
-    stats = asyncio.run(pipeline.run())
+        pipeline = BoundedScanPipeline(
+            store=store,
+            scan_endpoint=scan,
+            projector=CanonicalProjector(store),
+            max_inflight=4,
+        )
+        return await asyncio.wait_for(pipeline.run(), timeout=5)
+
+    stats = asyncio.run(exercise())
 
     assert maximum_active == 4
     assert stats.max_inflight_observed == 4
