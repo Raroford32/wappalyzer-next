@@ -1,5 +1,5 @@
-import requests
 import pytest
+import requests
 
 import wappalyzer.core.direct_requester as direct_requester_module
 from wappalyzer.core.direct_requester import DirectResponseFetcher

@@ -1,15 +1,14 @@
 import json
 import ssl
 from dataclasses import asdict
-from types import SimpleNamespace
 
 import pytest
 import requests
 
 import wappalyzer.core.transport as transport_module
 from wappalyzer.core.transport import (
-    Diagnostic,
     DestinationBlocked,
+    Diagnostic,
     DirectTransport,
     EgressPolicy,
     RequestPurpose,
