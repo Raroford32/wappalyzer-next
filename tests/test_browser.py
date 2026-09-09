@@ -30,6 +30,7 @@ class FakePage:
             "textCharacters": 0,
             "inlineScriptCount": 0,
             "inlineScriptCharacters": 0,
+            "domDetectionTruncated": False,
         }
 
     async def close(self):
@@ -239,6 +240,7 @@ def test_browser_stage_reports_every_configured_collection_limit(monkeypatch):
             "textCharacters": analyzer.BROWSER_DOM_TEXT_CHARACTER_LIMIT + 1,
             "inlineScriptCount": analyzer.BROWSER_INLINE_SCRIPT_COUNT_LIMIT + 1,
             "inlineScriptCharacters": analyzer.BROWSER_INLINE_SCRIPT_CHARACTER_LIMIT + 1,
+            "domDetectionTruncated": True,
         }
 
     async def clear_state(_driver, _page):
@@ -261,6 +263,25 @@ def test_browser_stage_reports_every_configured_collection_limit(monkeypatch):
         "scripts": {EvidenceLimit.BYTES, EvidenceLimit.COUNT},
         "text": {EvidenceLimit.BYTES},
     }
+
+
+def test_exact_dom_detection_limit_is_not_assumed_truncated_without_overflow_flag():
+    detections = [
+        {
+            "technology": "DenseDom",
+            "pattern": {"type": "dom.exists"},
+        }
+        for _index in range(analyzer.BROWSER_DOM_DETECTIONS_PER_TECH_LIMIT)
+    ]
+    metrics = {
+        "htmlCharacters": 0,
+        "textCharacters": 0,
+        "inlineScriptCount": 0,
+        "inlineScriptCharacters": 0,
+        "domDetectionTruncated": False,
+    }
+
+    assert analyzer.browser_evidence_truncations(detections, metrics, False) == ()
 
 
 def test_cleanup_failure_retires_driver_without_discarding_result(monkeypatch):
