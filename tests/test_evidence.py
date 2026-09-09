@@ -2,7 +2,6 @@ from dataclasses import FrozenInstanceError
 
 import pytest
 
-from wappalyzer import evidence
 from wappalyzer.core import utils
 from wappalyzer.evidence import (
     EvidenceLimit,
@@ -105,7 +104,6 @@ def test_resolver_deduplicates_one_source_and_combines_distinct_sources(monkeypa
         "B": {"cats": []},
     }
     monkeypatch.setattr(utils, "tech_db", database)
-    monkeypatch.setattr(evidence, "tech_db", database)
 
     candidates = (
         raw("A", "html", "same-pattern", version="9", confidence=25),

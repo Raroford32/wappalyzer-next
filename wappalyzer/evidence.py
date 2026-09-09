@@ -1,7 +1,6 @@
 from dataclasses import dataclass
 from typing import Iterable, Optional, Sequence, Tuple
 
-from wappalyzer.core.config import tech_db
 from wappalyzer.core.matcher import better_version
 from wappalyzer.core.utils import create_result
 from wappalyzer.models import (
@@ -22,6 +21,8 @@ from wappalyzer.models import (
     TLSMetadata,
     _require_digest,
 )
+
+_STAGE_ORDER = {stage: index for index, stage in enumerate(StageName)}
 
 
 def _require_text(name, value):
@@ -88,16 +89,13 @@ class StageEvidence:
         if any(not isinstance(item, EvidenceTruncation) for item in truncations):
             raise TypeError("truncations must contain only EvidenceTruncation values")
         expected_owner = (
-            ChannelOwner.STATIC
-            if self.name is StageName.STATIC
-            else ChannelOwner.BROWSER
+            ChannelOwner.STATIC if self.name is StageName.STATIC else ChannelOwner.BROWSER
         )
         for detection in detections:
             owner = CHANNEL_REGISTRY[detection.channel].owner
             if owner is not expected_owner:
                 raise ValueError(
-                    f"{detection.channel} is owned by {owner.value}, "
-                    f"not {self.name.value}"
+                    f"{detection.channel} is owned by {owner.value}, not {self.name.value}"
                 )
         if truncations and self.status is not StageStatus.PARTIAL:
             raise ValueError("truncated stage evidence must have partial status")
@@ -214,25 +212,17 @@ def merge_stage_evidence(
     if len({stage.name for stage in stages}) != len(stages):
         raise ValueError("stages must contain at most one result per stage")
 
-    ordered_stages = tuple(sorted(stages, key=lambda item: item.name.value))
+    ordered_stages = tuple(sorted(stages, key=lambda item: _STAGE_ORDER[item.name]))
     stage_results = tuple(_stage_result(stage) for stage in ordered_stages)
     identities = {
-        stage.response_identity
-        for stage in ordered_stages
-        if stage.response_identity is not None
+        stage.response_identity for stage in ordered_stages if stage.response_identity is not None
     }
-    observation = (
-        ProtocolObservation.MULTI
-        if len(identities) > 1
-        else ProtocolObservation.SINGLE
-    )
+    observation = ProtocolObservation.MULTI if len(identities) > 1 else ProtocolObservation.SINGLE
     technologies = (
         ()
         if observation is ProtocolObservation.MULTI
         else resolve_raw_detections(
-            detection
-            for stage in ordered_stages
-            for detection in stage.detections
+            detection for stage in ordered_stages for detection in stage.detections
         )
     )
     effective_identity = next(
@@ -244,12 +234,7 @@ def merge_stage_evidence(
         None,
     )
     errors = tuple(
-        code
-        for code in FailureCode
-        if any(
-            code in stage.error_codes
-            for stage in ordered_stages
-        )
+        code for code in FailureCode if any(code in stage.error_codes for stage in ordered_stages)
     )
 
     return ProtocolResult(
@@ -257,15 +242,9 @@ def merge_stage_evidence(
         status=_protocol_status(ordered_stages, technologies),
         requested_url=requested_url,
         effective_url=(
-            effective_identity.effective_url
-            if effective_identity is not None
-            else requested_url
+            effective_identity.effective_url if effective_identity is not None else requested_url
         ),
-        http_status=(
-            effective_identity.http_status
-            if effective_identity is not None
-            else None
-        ),
+        http_status=(effective_identity.http_status if effective_identity is not None else None),
         tls=tls,
         observation=observation,
         stages=stage_results,
