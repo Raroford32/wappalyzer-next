@@ -340,6 +340,11 @@ class ProtocolResult:
             raise ValueError("technologies must contain at most one result per name")
         if self.observation is ProtocolObservation.MULTI and technologies:
             raise ValueError("multi-observation results must keep technologies stage-scoped")
+        if (
+            self.observation is ProtocolObservation.MULTI
+            and self.status is not ProtocolStatus.PARTIAL
+        ):
+            raise ValueError("multi-observation results must have partial status")
         object.__setattr__(self, "stages", stages)
         object.__setattr__(self, "technologies", technologies)
         object.__setattr__(self, "error_codes", error_codes)

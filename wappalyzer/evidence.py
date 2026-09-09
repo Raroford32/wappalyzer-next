@@ -185,9 +185,13 @@ def _stage_result(stage):
     )
 
 
-def _protocol_status(stages, technologies):
+def _protocol_status(stages, technologies, observation):
     statuses = {stage.status for stage in stages}
-    if StageStatus.PARTIAL in statuses or StageStatus.INDETERMINATE in statuses:
+    if (
+        observation is ProtocolObservation.MULTI
+        or StageStatus.PARTIAL in statuses
+        or StageStatus.INDETERMINATE in statuses
+    ):
         return ProtocolStatus.PARTIAL
     has_detections = bool(technologies) or any(stage.detections for stage in stages)
     return ProtocolStatus.SUCCESS if has_detections else ProtocolStatus.SUCCESS_EMPTY
@@ -218,7 +222,12 @@ def merge_stage_evidence(
     identities = {
         stage.response_identity for stage in ordered_stages if stage.response_identity is not None
     }
-    observation = ProtocolObservation.MULTI if len(identities) > 1 else ProtocolObservation.SINGLE
+    identity_missing = any(stage.response_identity is None for stage in ordered_stages)
+    observation = (
+        ProtocolObservation.MULTI
+        if len(ordered_stages) > 1 and (identity_missing or len(identities) > 1)
+        else ProtocolObservation.SINGLE
+    )
     technologies = (
         ()
         if observation is ProtocolObservation.MULTI
@@ -240,7 +249,7 @@ def merge_stage_evidence(
 
     return ProtocolResult(
         protocol=protocol,
-        status=_protocol_status(ordered_stages, technologies),
+        status=_protocol_status(ordered_stages, technologies, observation),
         requested_url=requested_url,
         effective_url=(
             effective_identity.effective_url if effective_identity is not None else requested_url

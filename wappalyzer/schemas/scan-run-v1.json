@@ -522,6 +522,9 @@
           },
           "then": {
             "properties": {
+              "status": {
+                "const": "partial"
+              },
               "technologies": {
                 "maxItems": 0
               }
