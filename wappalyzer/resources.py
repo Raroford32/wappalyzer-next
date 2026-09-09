@@ -9,6 +9,7 @@ from typing import Optional
 
 MIB = 1024**2
 GIB = 1024**3
+UNBOUNDED_RESOURCE = (1 << 63) - 1
 _RESOURCE_FIELDS = (
     "cpu",
     "memory_bytes",
@@ -111,11 +112,13 @@ class ResourceSnapshot:
     def broker_capacity(self):
         return ResourceRequest(
             cpu=self.cpu_count,
-            memory_bytes=self.memory_bytes or 0,
-            file_descriptors=self.file_descriptors or 0,
-            sockets=self.sockets or 0,
-            processes=self.processes or 0,
-            temp_bytes=self.temp_bytes or 0,
+            memory_bytes=(UNBOUNDED_RESOURCE if self.memory_bytes is None else self.memory_bytes),
+            file_descriptors=(
+                UNBOUNDED_RESOURCE if self.file_descriptors is None else self.file_descriptors
+            ),
+            sockets=(UNBOUNDED_RESOURCE if self.sockets is None else self.sockets),
+            processes=(UNBOUNDED_RESOURCE if self.processes is None else self.processes),
+            temp_bytes=(UNBOUNDED_RESOURCE if self.temp_bytes is None else self.temp_bytes),
         )
 
 
@@ -243,19 +246,29 @@ def _quota_cpu_count(cpu_max):
     return max(1, math.ceil(quota / period))
 
 
+def _controller_values(value):
+    if value is None:
+        return ()
+    if isinstance(value, str):
+        return (value,)
+    return tuple(value)
+
+
 def effective_cpu_count(host_count, affinity_count, cpuset, cpu_max):
     candidates = []
     for value in (host_count, affinity_count):
         if isinstance(value, int) and not isinstance(value, bool) and value > 0:
             candidates.append(value)
 
-    cpuset_count = parse_cpu_set(cpuset)
-    if cpuset_count:
-        candidates.append(cpuset_count)
+    for cpuset_value in _controller_values(cpuset):
+        cpuset_count = parse_cpu_set(cpuset_value)
+        if cpuset_count:
+            candidates.append(cpuset_count)
 
-    quota_count = _quota_cpu_count(cpu_max)
-    if quota_count:
-        candidates.append(quota_count)
+    for cpu_max_value in _controller_values(cpu_max):
+        quota_count = _quota_cpu_count(cpu_max_value)
+        if quota_count:
+            candidates.append(quota_count)
 
     return min(candidates) if candidates else 1
 
@@ -282,10 +295,13 @@ def effective_available_memory(host_available, memory_max, memory_current):
     ):
         candidates.append(host_available)
 
-    limit = _parse_controller_integer(memory_max)
-    current = _parse_controller_integer(memory_current)
-    if limit is not None and current is not None:
-        candidates.append(max(0, limit - current))
+    maximum_values = _controller_values(memory_max)
+    current_values = _controller_values(memory_current)
+    for maximum_value, current_value in zip(maximum_values, current_values):
+        limit = _parse_controller_integer(maximum_value)
+        current = _parse_controller_integer(current_value)
+        if limit is not None and current is not None:
+            candidates.append(max(0, limit - current))
 
     if not candidates:
         return None
@@ -296,6 +312,16 @@ def effective_available_memory(host_available, memory_max, memory_current):
 
 
 class SystemResourceProbe:
+    def __init__(
+        self,
+        *,
+        cgroup_root=Path("/sys/fs/cgroup"),
+        proc_cgroup_path=Path("/proc/self/cgroup"),
+    ):
+        self._cgroup_root = Path(cgroup_root)
+        self._proc_cgroup_path = Path(proc_cgroup_path)
+        self._controller_directories_cache = None
+
     def host_cpu_count(self):
         return os.cpu_count()
 
@@ -349,6 +375,60 @@ class SystemResourceProbe:
         statistics = os.statvfs(path)
         return statistics.f_bavail * statistics.f_frsize
 
+    def _controller_directories(self):
+        if self._controller_directories_cache is not None:
+            return self._controller_directories_cache
+
+        root = self._cgroup_root.resolve()
+        relative = None
+        try:
+            lines = self._proc_cgroup_path.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            lines = ()
+        for line in lines:
+            hierarchy, _controllers, path = line.split(":", 2)
+            if hierarchy == "0":
+                relative = path.lstrip("/")
+                break
+
+        current = (root / relative).resolve() if relative is not None else root
+        try:
+            current.relative_to(root)
+        except ValueError:
+            current = root
+
+        directories = []
+        while True:
+            directories.append(current)
+            if current == root:
+                break
+            current = current.parent
+        self._controller_directories_cache = tuple(directories)
+        return self._controller_directories_cache
+
+    def controller_values(self, name):
+        values = []
+        for directory in self._controller_directories():
+            try:
+                values.append((directory / name).read_text(encoding="utf-8").strip())
+            except OSError:
+                continue
+        return tuple(values)
+
+    def controller_pairs(self, maximum, current):
+        pairs = []
+        for directory in self._controller_directories():
+            maximum_path = directory / maximum
+            if not maximum_path.exists():
+                continue
+            try:
+                maximum_value = maximum_path.read_text(encoding="utf-8").strip()
+                current_value = (directory / current).read_text(encoding="utf-8").strip()
+            except OSError:
+                current_value = None
+            pairs.append((maximum_value, current_value))
+        return tuple(pairs)
+
 
 def _safe_call(reasons, label, function, *args):
     try:
@@ -360,6 +440,47 @@ def _safe_call(reasons, label, function, *args):
 
 def _read_text(probe, path, reasons):
     return _safe_call(reasons, str(path), probe.read_text, path)
+
+
+def _read_controller_values(probe, name, path, reasons):
+    reader = getattr(probe, "controller_values", None)
+    if reader is None:
+        value = _read_text(probe, path, reasons)
+        return () if value is None else (value,)
+    values = _safe_call(reasons, str(path), reader, name)
+    if not values:
+        reasons.append(f"{path}: unavailable")
+        return ()
+    return tuple(values)
+
+
+def _read_controller_pairs(probe, maximum, current, reasons):
+    reader = getattr(probe, "controller_pairs", None)
+    if reader is None:
+        maximum_value = _read_text(
+            probe,
+            Path("/sys/fs/cgroup") / maximum,
+            reasons,
+        )
+        current_value = _read_text(
+            probe,
+            Path("/sys/fs/cgroup") / current,
+            reasons,
+        )
+        if maximum_value is None and current_value is None:
+            return ()
+        return ((maximum_value, current_value),)
+    pairs = _safe_call(
+        reasons,
+        f"/sys/fs/cgroup/{maximum}",
+        reader,
+        maximum,
+        current,
+    )
+    if not pairs:
+        reasons.append(f"/sys/fs/cgroup/{maximum}: unavailable")
+        return ()
+    return tuple(pairs)
 
 
 def _valid_cpu_max(value):
@@ -388,12 +509,19 @@ def capture_snapshot(probe=None, *, artifact_path=None):
     )
     cpuset_path = Path("/sys/fs/cgroup/cpuset.cpus.effective")
     cpu_max_path = Path("/sys/fs/cgroup/cpu.max")
-    cpuset = _read_text(probe, cpuset_path, reasons)
-    cpu_max = _read_text(probe, cpu_max_path, reasons)
-    if cpuset is not None and parse_cpu_set(cpuset) is None:
-        reasons.append(f"{cpuset_path}: malformed")
-    if cpu_max is not None and not _valid_cpu_max(cpu_max):
-        reasons.append(f"{cpu_max_path}: malformed")
+    cpuset = _read_controller_values(
+        probe,
+        "cpuset.cpus.effective",
+        cpuset_path,
+        reasons,
+    )
+    cpu_max = _read_controller_values(probe, "cpu.max", cpu_max_path, reasons)
+    for value in cpuset:
+        if parse_cpu_set(value) is None:
+            reasons.append(f"{cpuset_path}: malformed")
+    for value in cpu_max:
+        if not _valid_cpu_max(value):
+            reasons.append(f"{cpu_max_path}: malformed")
 
     host_memory = _safe_call(
         reasons,
@@ -402,12 +530,19 @@ def capture_snapshot(probe=None, *, artifact_path=None):
     )
     memory_max_path = Path("/sys/fs/cgroup/memory.max")
     memory_current_path = Path("/sys/fs/cgroup/memory.current")
-    memory_max = _read_text(probe, memory_max_path, reasons)
-    memory_current = _read_text(probe, memory_current_path, reasons)
-    if memory_max not in (None, "max") and _parse_controller_integer(memory_max) is None:
-        reasons.append(f"{memory_max_path}: malformed")
-    if memory_max not in (None, "max") and _parse_controller_integer(memory_current) is None:
-        reasons.append(f"{memory_current_path}: malformed")
+    memory_pairs = _read_controller_pairs(
+        probe,
+        "memory.max",
+        "memory.current",
+        reasons,
+    )
+    memory_max = tuple(pair[0] for pair in memory_pairs)
+    memory_current = tuple(pair[1] for pair in memory_pairs)
+    for maximum_value, current_value in memory_pairs:
+        if maximum_value not in (None, "max") and _parse_controller_integer(maximum_value) is None:
+            reasons.append(f"{memory_max_path}: malformed")
+        if maximum_value not in (None, "max") and _parse_controller_integer(current_value) is None:
+            reasons.append(f"{memory_current_path}: malformed")
     available_memory = effective_available_memory(
         host_memory,
         memory_max,
@@ -434,19 +569,27 @@ def capture_snapshot(probe=None, *, artifact_path=None):
 
     pids_max_path = Path("/sys/fs/cgroup/pids.max")
     pids_current_path = Path("/sys/fs/cgroup/pids.current")
-    pids_max_text = _read_text(probe, pids_max_path, reasons)
-    pids_current_text = _read_text(probe, pids_current_path, reasons)
-    pids_max = _parse_controller_integer(pids_max_text)
-    pids_current = _parse_controller_integer(pids_current_text)
-    if pids_max_text not in (None, "max") and pids_max is None:
-        reasons.append(f"{pids_max_path}: malformed")
-    if pids_max is not None and pids_current is None:
-        reasons.append(f"{pids_current_path}: malformed")
-    processes = (
-        max(0, pids_max - pids_current)
-        if pids_max is not None and pids_current is not None
-        else None
+    pids_pairs = _read_controller_pairs(
+        probe,
+        "pids.max",
+        "pids.current",
+        reasons,
     )
+    process_allowances = []
+    pids_current_values = []
+    for maximum_value, current_value in pids_pairs:
+        maximum = _parse_controller_integer(maximum_value)
+        current = _parse_controller_integer(current_value)
+        if maximum_value not in (None, "max") and maximum is None:
+            reasons.append(f"{pids_max_path}: malformed")
+        if maximum is not None and current is None:
+            reasons.append(f"{pids_current_path}: malformed")
+        if current is not None:
+            pids_current_values.append(current)
+        if maximum is not None and current is not None:
+            process_allowances.append(max(0, maximum - current))
+    processes = min(process_allowances) if process_allowances else None
+    pids_current = pids_current_values[0] if pids_current_values else 0
 
     shared_memory = _safe_call(
         reasons,
@@ -588,6 +731,15 @@ def autosize(
             insufficiency_reasons=tuple(dict.fromkeys(insufficiency_reasons)),
         )
 
+    selected_browser = _selected_count(
+        requested.browser,
+        snapshot,
+        profile.browser_active_page,
+        reserve=profile.browser_replacement,
+    )
+    if requested.browser and snapshot.memory_bytes is None:
+        selected_browser = min(selected_browser, 1)
+
     selected = WorkerCounts(
         discovery=_selected_count(
             requested.discovery,
@@ -599,12 +751,7 @@ def autosize(
             snapshot,
             profile.static_worker,
         ),
-        browser=_selected_count(
-            requested.browser,
-            snapshot,
-            profile.browser_active_page,
-            reserve=profile.browser_replacement,
-        ),
+        browser=selected_browser,
     )
     return ResourcePlan(
         snapshot=snapshot,
