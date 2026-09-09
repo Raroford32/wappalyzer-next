@@ -4,7 +4,7 @@ import zipfile
 import pytest
 
 from wappalyzer.browser import analyzer
-from wappalyzer.models import ChannelOwner
+from wappalyzer.models import ChannelOwner, EvidenceLimit, StageStatus
 
 
 def test_extension_bridge_requests_raw_channel_tagged_detections():
@@ -189,6 +189,70 @@ def test_complete_browser_stage_returns_raw_evidence_and_response_identity(monke
     assert len(stage.response_identity.content_sha256) == 64
     assert [(item.technology, item.channel) for item in stage.detections] == [("React", "js")]
     assert page.closed
+
+
+def test_browser_stage_reports_every_configured_collection_limit(monkeypatch):
+    class Response:
+        status = 200
+
+        async def body(self):
+            return b"response"
+
+    driver = FakeDriver()
+    page = FakePage()
+
+    async def new_page():
+        return page
+
+    async def goto(url, **kwargs):
+        page.url = url
+        return Response()
+
+    async def no_stimulation(_page):
+        return None
+
+    async def detections(_driver, _url, raw=False):
+        assert raw
+        return [
+            {
+                "technology": "DenseDom",
+                "pattern": {
+                    "type": "dom.exists",
+                    "regex": "selector",
+                    "confidence": 100,
+                },
+            }
+            for _index in range(analyzer.BROWSER_DOM_DETECTIONS_PER_TECH_LIMIT)
+        ]
+
+    async def metrics(_page):
+        return {
+            "htmlCharacters": analyzer.BROWSER_HTML_CHARACTER_LIMIT + 1,
+            "textCharacters": analyzer.BROWSER_DOM_TEXT_CHARACTER_LIMIT + 1,
+            "inlineScriptCount": analyzer.BROWSER_INLINE_SCRIPT_COUNT_LIMIT + 1,
+            "inlineScriptCharacters": analyzer.BROWSER_INLINE_SCRIPT_CHARACTER_LIMIT + 1,
+        }
+
+    async def clear_state(_driver, _page):
+        return None
+
+    driver.context.new_page = new_page
+    page.goto = goto
+    monkeypatch.setattr(analyzer, "_stimulate_page", no_stimulation)
+    monkeypatch.setattr(analyzer, "_get_detections", detections)
+    monkeypatch.setattr(analyzer, "_get_evidence_metrics", metrics)
+    monkeypatch.setattr(analyzer, "_clear_target_state", clear_state)
+
+    stage = asyncio.run(analyzer.process_url_evidence(driver, "https://example.test"))
+    truncations = {item.channel: set(item.limits) for item in stage.truncations}
+
+    assert stage.status is StageStatus.PARTIAL
+    assert truncations == {
+        "dom": {EvidenceLimit.BYTES, EvidenceLimit.COUNT},
+        "html": {EvidenceLimit.BYTES},
+        "scripts": {EvidenceLimit.BYTES, EvidenceLimit.COUNT},
+        "text": {EvidenceLimit.BYTES},
+    }
 
 
 def test_cleanup_failure_retires_driver_without_discarding_result(monkeypatch):
