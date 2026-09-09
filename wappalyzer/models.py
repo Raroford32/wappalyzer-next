@@ -644,9 +644,7 @@ class CanonicalRecord:
 _PROTOCOL_RANK = {protocol: index for index, protocol in enumerate(PROTOCOL_ORDER)}
 _STAGE_RANK = {stage: index for index, stage in enumerate(StageName)}
 _FAILURE_RANK = {code: index for index, code in enumerate(FailureCode)}
-_EVIDENCE_LIMIT_RANK = {
-    limit: index for index, limit in enumerate(EvidenceLimit)
-}
+_EVIDENCE_LIMIT_RANK = {limit: index for index, limit in enumerate(EvidenceLimit)}
 
 
 def _ordered_errors(error_codes: Sequence[FailureCode]) -> list:

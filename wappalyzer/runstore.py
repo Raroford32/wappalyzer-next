@@ -21,9 +21,9 @@ from wappalyzer.models import (
     CanonicalRecord,
     ClaimToken,
     Endpoint,
+    EventKind,
     EvidenceLimit,
     EvidenceTruncation,
-    EventKind,
     Failure,
     FailureCode,
     FailureDisposition,
@@ -32,6 +32,7 @@ from wappalyzer.models import (
     ProtocolObservation,
     ProtocolResult,
     ProtocolStatus,
+    ResponseIdentity,
     RunEvent,
     RunLifecycle,
     RunSpec,
@@ -42,7 +43,6 @@ from wappalyzer.models import (
     StaleClaimError,
     TargetOccurrence,
     Technology,
-    ResponseIdentity,
     TLSMetadata,
     TLSTrust,
     aggregate_occurrence_status,
@@ -330,9 +330,7 @@ def _identity_matches(
 def _protocol_document(result: ProtocolResult) -> Dict[str, object]:
     failure_rank = {code: index for index, code in enumerate(FailureCode)}
     stage_rank = {stage: index for index, stage in enumerate(StageName)}
-    evidence_limit_rank = {
-        limit: index for index, limit in enumerate(EvidenceLimit)
-    }
+    evidence_limit_rank = {limit: index for index, limit in enumerate(EvidenceLimit)}
 
     def technology_document(technology):
         return {
@@ -465,9 +463,7 @@ def _protocol_from_document(document: object) -> ProtocolResult:
                 StageResult(
                     name=StageName(stage["name"]),
                     status=StageStatus(stage["status"]),
-                    error_codes=tuple(
-                        FailureCode(code) for code in stage["error_codes"]
-                    ),
+                    error_codes=tuple(FailureCode(code) for code in stage["error_codes"]),
                     response_identity=identity,
                     technologies=tuple(
                         technology_from_document(technology)
@@ -476,10 +472,7 @@ def _protocol_from_document(document: object) -> ProtocolResult:
                     truncations=tuple(
                         EvidenceTruncation(
                             channel=truncation["channel"],
-                            limits=tuple(
-                                EvidenceLimit(limit)
-                                for limit in truncation["limits"]
-                            ),
+                            limits=tuple(EvidenceLimit(limit) for limit in truncation["limits"]),
                         )
                         for truncation in stage.get("truncations", ())
                     ),
@@ -502,9 +495,7 @@ def _protocol_from_document(document: object) -> ProtocolResult:
             effective_url=document["effective_url"],
             http_status=document["http_status"],
             tls=tls,
-            observation=ProtocolObservation(
-                document.get("observation", "single_observation")
-            ),
+            observation=ProtocolObservation(document.get("observation", "single_observation")),
             stages=tuple(stages),
             technologies=technologies,
             error_codes=tuple(FailureCode(code) for code in document["error_codes"]),
