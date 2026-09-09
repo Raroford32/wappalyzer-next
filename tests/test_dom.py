@@ -41,7 +41,7 @@ def test_nested_property_rule_reads_static_dom_properties():
 
 
 def test_missing_runtime_properties_and_sources_do_not_match():
-    document = soup("<body><script></script></body>")
+    document = soup('<body __k="present"><script></script></body>')
 
     assert match_dom(
         {"body": {"properties": {"__k": ""}}},
@@ -51,6 +51,23 @@ def test_missing_runtime_properties_and_sources_do_not_match():
         {"script": {"src": ""}},
         document,
     ) == (False, "", 0)
+
+
+def test_empty_text_is_not_runtime_text_evidence():
+    assert match_dom(
+        {"style#astra-theme": {"text": ""}},
+        soup('<style id="astra-theme"></style>'),
+    ) == (False, "", 0)
+
+
+def test_distinct_dom_selectors_add_confidence():
+    assert match_dom(
+        [
+            r".first\;confidence:25",
+            r".second\;confidence:75",
+        ],
+        soup('<div class="first second"></div>'),
+    ) == (True, "", 100)
 
 
 def test_selector_compilation_is_reused():

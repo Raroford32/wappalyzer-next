@@ -96,13 +96,6 @@ def resolve_implies(detections):
                 if implied_name not in detections:
                     detections[implied_name] = candidate
                     changed = True
-                    continue
-
-                previous = detections[implied_name].copy()
-                merge_detection(detections[implied_name], candidate)
-
-                if previous != detections[implied_name]:
-                    changed = True
 
 
 def resolve_excludes(detections):
@@ -207,9 +200,14 @@ def create_result(technologies):
     resolved = {}
 
     for tech_name, value in technologies.items():
+        confidence = max(0, min(int(value.get("confidence", 100)), 100))
+
+        if confidence == 0:
+            continue
+
         candidate = {
             "version": value.get("version", ""),
-            "confidence": max(0, min(int(value.get("confidence", 100)), 100)),
+            "confidence": confidence,
             "_direct": True,
         }
 

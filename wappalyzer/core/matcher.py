@@ -44,6 +44,24 @@ def get_version(match, version_type):
         version = group_or_literal(version_type, match)
     if version:
         version = re.split(r"[\)\]\},]", version.replace("'", "").replace('"', ""))[0]
+    return normalize_version(version)
+
+
+def normalize_version(version):
+    version = normalize_match_value(version).strip()
+
+    if (
+        not version
+        or len(version) > 15
+        or not re.fullmatch(r"[A-Za-z0-9._-]+", version)
+    ):
+        return ""
+
+    numeric_prefix = re.match(r"\d+", version)
+
+    if numeric_prefix and int(numeric_prefix.group()) >= 10_000:
+        return ""
+
     return version
 
 
@@ -75,12 +93,12 @@ def compile_pattern(regex):
     clean_regex, version_type, confidence = parse_pattern(regex)
 
     try:
-        return re.compile(clean_regex), version_type, confidence
+        return re.compile(clean_regex, re.IGNORECASE), version_type, confidence
     except re.error:
         repaired_regex = repair_javascript_pattern(clean_regex)
 
         try:
-            return re.compile(repaired_regex), version_type, confidence
+            return re.compile(repaired_regex, re.IGNORECASE), version_type, confidence
         except re.error:
             return None, version_type, confidence
 
@@ -144,6 +162,20 @@ def better_match(candidate, current):
     return candidate if match_key(*candidate) > match_key(*current) else current
 
 
+def combine_matches(current, candidate):
+    if not candidate[0]:
+        return current
+
+    if not current[0]:
+        return candidate
+
+    return (
+        True,
+        better_version(candidate[1], current[1]),
+        min(int(current[2]) + int(candidate[2]), 100),
+    )
+
+
 def single_match(regex, string):
     compiled, version_type, confidence = compile_pattern(regex)
 
@@ -161,16 +193,18 @@ def match(regex, string):
         to_match = string
     else:
         to_match = [string]
-    best = (False, "", 0)
+    regexes = [regex] if isinstance(regex, str) else regex
+    aggregate = (False, "", 0)
 
-    for s in to_match:
-        if not isinstance(s, str):
-            s = normalize_match_value(s)
-        regexes = [regex] if isinstance(regex, str) else regex
-        for r in regexes:
-            best = better_match(single_match(r, s), best)
+    for pattern in dict.fromkeys(normalize_match_value(item) for item in regexes):
+        pattern_match = (False, "", 0)
 
-    return best
+        for value in to_match:
+            pattern_match = better_match(single_match(pattern, value), pattern_match)
+
+        aggregate = combine_matches(aggregate, pattern_match)
+
+    return aggregate
 
 
 def match_dict(pattern_dict, response_dict, case_insensitive_keys=False):
@@ -179,7 +213,7 @@ def match_dict(pattern_dict, response_dict, case_insensitive_keys=False):
             normalize_match_value(key).casefold(): value for key, value in response_dict.items()
         }
 
-    best = (False, "", 0)
+    aggregate = (False, "", 0)
 
     for name, pattern in pattern_dict.items():
         if case_insensitive_keys:
@@ -189,10 +223,7 @@ def match_dict(pattern_dict, response_dict, case_insensitive_keys=False):
             values = response_dict[name]
             if not isinstance(values, list):
                 values = [values]
-            for value in values:
-                if pattern == "":
-                    best = better_match((True, "", 100), best)
-                else:
-                    best = better_match(match(pattern, value), best)
+            candidate = (True, "", 100) if pattern == "" else match(pattern, values)
+            aggregate = combine_matches(aggregate, candidate)
 
-    return best
+    return aggregate

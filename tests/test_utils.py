@@ -88,6 +88,22 @@ def test_direct_detection_beats_implied_detection(graph):
     assert result["B"]["confidence"] == 95
 
 
+def test_implication_never_changes_existing_direct_evidence(graph):
+    result = utils.create_result(
+        {
+            "A": {"version": "", "confidence": 100},
+            "B": {"version": "", "confidence": 25},
+        }
+    )
+
+    assert result["B"]["version"] == ""
+    assert result["B"]["confidence"] == 25
+
+
+def test_zero_confidence_signal_does_not_detect_technology(graph):
+    assert utils.create_result({"A": {"version": "1", "confidence": 0}}) == {}
+
+
 def test_technology_cannot_satisfy_its_own_requirement(graph):
     result = utils.create_result({"SelfSatisfying": {"version": "", "confidence": 100}})
 

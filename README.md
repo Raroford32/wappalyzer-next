@@ -231,7 +231,6 @@ The following environment variables tune resource policy without code changes:
 | `WAPPALYZER_WORKERS` | resource-aware | Override automatic top-level workers |
 | `WAPPALYZER_ASSET_WORKERS` | global CPU budget | Explicit concurrent asset override |
 | `WAPPALYZER_ASSET_LIMIT` | `64` | Maximum assets fetched per URL |
-| `WAPPALYZER_ASSET_DEPTH` | `2` | Script discovery depth |
 | `WAPPALYZER_MAX_ASSET_BYTES` | `2097152` | Maximum script, CSS, or probe body |
 | `WAPPALYZER_CONNECT_TIMEOUT` | `5` | HTTP connect timeout in seconds |
 | `WAPPALYZER_READ_TIMEOUT` | `30` | HTTP read timeout in seconds |

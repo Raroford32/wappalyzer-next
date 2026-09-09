@@ -41,9 +41,27 @@ def test_collects_all_single_request_evidence_channels():
     assert evidence["cookies"]["session_marker"] == "CookieMarker"
 
 
+def test_static_source_does_not_manufacture_runtime_or_network_evidence():
+    value = response()
+    value._content = b"""
+    <script>
+      const ReactOnRails = false;
+      const sentry = "https://cdn.example/sentry.js";
+      const shop = "https://store.myshopify.com/path";
+    </script>
+    <script src="/actual.js"></script>
+    """
+
+    evidence = analyzer.collect_evidence(value, "fast")
+
+    assert evidence["js"] == []
+    assert evidence["xhr"] == []
+    assert evidence["scriptSrc"] == ["https://example.test/actual.js"]
+
+
 def test_fast_analyzer_uses_compiled_channel_plan(monkeypatch):
     database = {
-        "CookieTech": {"cats": [], "cookies": {"session_marker": "CookieMarker"}},
+        "CookieTech": {"cats": [], "cookies": {"SESSION_MARKER": "cookiemarker"}},
         "CssTech": {"cats": [], "css": r"\.css-marker"},
         "DomTech": {
             "cats": [],

@@ -8,7 +8,6 @@ import tldextract
 from bs4 import BeautifulSoup
 
 from wappalyzer.analyzers.dom import compile_selector, match_dom
-from wappalyzer.analyzers.js import match_js
 from wappalyzer.core.config import tech_db
 from wappalyzer.core.matcher import (
     better_version,
@@ -22,7 +21,6 @@ from wappalyzer.core.utils import create_result
 from wappalyzer.parsers.certIssuer import get_certIssuer
 from wappalyzer.parsers.css import get_css
 from wappalyzer.parsers.dns import get_dns
-from wappalyzer.parsers.js import get_js
 from wappalyzer.parsers.meta import get_meta
 from wappalyzer.parsers.robots import get_robots
 from wappalyzer.parsers.scriptSrc import get_scriptSrc
@@ -40,7 +38,6 @@ PATTERN_FIELDS = {
 }
 DICT_PATTERN_FIELDS = {"cookies", "dns", "headers", "js", "meta"}
 ASSET_LIMIT = max(0, int(os.getenv("WAPPALYZER_ASSET_LIMIT", "64")))
-ASSET_DEPTH = max(0, int(os.getenv("WAPPALYZER_ASSET_DEPTH", "2")))
 ASSET_MAX_BYTES = max(
     1,
     int(os.getenv("WAPPALYZER_MAX_ASSET_BYTES", str(2 * 1024 * 1024))),
@@ -132,19 +129,6 @@ def prepare_matchers():
                             _compile_value(pattern)
 
 
-def _js_evidence(source):
-    js_dict, low_dict, js_classes = get_js(source)
-
-    if not js_dict and not low_dict:
-        return None
-
-    return {
-        "dict": js_dict,
-        "low_dict": low_dict,
-        "classes": js_classes,
-    }
-
-
 class AssetBudget:
     def __init__(self, limit):
         self.remaining = max(0, limit)
@@ -221,11 +205,6 @@ def _fetch_assets(
                 responses[requested_url] = ""
 
     return responses
-
-
-def _looks_like_script(url):
-    path = urlparse(url).path.casefold()
-    return path.endswith((".js", ".mjs", ".cjs"))
 
 
 def _stylesheet_urls(base_url, soup):
@@ -305,66 +284,35 @@ def collect_evidence(
     parsed_url = urlparse(response.url)
     domain = ".".join(part for part in (r.domain, r.suffix) if part)
     base_url = f"{parsed_url.scheme}://{parsed_url.netloc}"
-    js = []
     scripts = []
-    xhr_candidates = []
     asset_budget = AssetBudget(ASSET_LIMIT)
 
     for script in soup.find_all("script"):
         if not script.get("src"):
             source = script.string or script.get_text()
             scripts.append(source)
-            xhr_candidates.extend(get_scriptSrc(response.url, source))
-            parsed_js = _js_evidence(source)
-
-            if parsed_js:
-                js.append(parsed_js)
 
     script_sources = get_scriptSrc(response.url, soup)
     css_sources = get_css(soup)
 
     if scan_type != "fast":
-        pending_scripts = list(script_sources)
-        fetched_scripts = {}
+        remaining = _remaining_seconds(deadline)
 
-        for _ in range(ASSET_DEPTH):
-            new_urls = [url for url in pending_scripts if url not in fetched_scripts]
-            remaining = _remaining_seconds(deadline)
-
-            if not new_urls or remaining <= 0:
-                break
-
-            batch = _fetch_assets(
-                new_urls,
+        if script_sources and remaining > 0:
+            fetched_scripts = _fetch_assets(
+                script_sources,
                 remaining,
                 cookie,
                 response.url,
                 asset_budget,
                 asset_workers,
             )
-            fetched_scripts.update((url, batch.get(url, "")) for url in new_urls if url in batch)
-            pending_scripts = []
+            scripts.extend(
+                fetched_scripts[url]
+                for url in script_sources
+                if fetched_scripts.get(url)
+            )
 
-            for url in new_urls:
-                if url not in fetched_scripts:
-                    continue
-
-                source = fetched_scripts[url]
-
-                if not source:
-                    continue
-
-                scripts.append(source)
-                parsed_js = _js_evidence(source)
-
-                if parsed_js:
-                    js.append(parsed_js)
-
-                discovered = get_scriptSrc(url, source)
-                xhr_candidates.extend(discovered)
-                pending_scripts.extend(item for item in discovered if _looks_like_script(item))
-
-        script_sources = list(dict.fromkeys(script_sources + list(fetched_scripts)))
         css_urls = _stylesheet_urls(response.url, soup)
         remaining = _remaining_seconds(deadline)
 
@@ -445,7 +393,7 @@ def collect_evidence(
         "dom": soup,
         "headers": response.headers,
         "html": response.text,
-        "js": js,
+        "js": [],
         "meta": meta,
         "probes": probes,
         "robots": robots,
@@ -453,7 +401,7 @@ def collect_evidence(
         "scripts": scripts,
         "text": soup.get_text(" ", strip=True),
         "url": response.url,
-        "xhr": list(dict.fromkeys(xhr_candidates)),
+        "xhr": [],
     }
 
 
@@ -520,14 +468,6 @@ def analyze_from_response(
             match_dom(pattern, evidence["dom"]),
         )
 
-    if evidence["js"]:
-        for tech_name, pattern in DETECTOR_PLAN["js"]:
-            _add_candidate(
-                result,
-                tech_name,
-                match_js(pattern, evidence["js"]),
-            )
-
     for field in ("cookies", "dns", "headers", "meta"):
         if evidence[field]:
             for tech_name, pattern in DETECTOR_PLAN[field]:
@@ -537,7 +477,7 @@ def analyze_from_response(
                     match_dict(
                         pattern,
                         evidence[field],
-                        case_insensitive_keys=field in {"headers", "meta"},
+                        case_insensitive_keys=True,
                     ),
                 )
 
