@@ -1,4 +1,3 @@
-import asyncio
 import hashlib
 import importlib.metadata
 import json
