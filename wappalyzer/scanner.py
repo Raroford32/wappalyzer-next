@@ -30,6 +30,7 @@ from wappalyzer.models import (
     StageName,
     StageStatus,
     TLSMetadata,
+    TLSTrust,
 )
 from wappalyzer.resources import (
     DEFAULT_RESOURCE_PROFILE,
@@ -164,9 +165,10 @@ class _LoopRunner:
 
 
 class _FullScanBackend:
-    def __init__(self, workers=1, timeout=30):
+    def __init__(self, workers=1, timeout=30, strict_tls=False):
         self.workers = workers
         self.timeout = timeout
+        self.strict_tls = strict_tls
         self.pool = None
 
     async def ensure_pool(self, size):
@@ -179,7 +181,11 @@ class _FullScanBackend:
 
             return
 
-        pool = DriverPool(size=size, timeout=self.timeout)
+        pool = DriverPool(
+            size=size,
+            timeout=self.timeout,
+            strict_tls=self.strict_tls,
+        )
 
         try:
             await pool.start()
@@ -204,14 +210,18 @@ class _FullScanBackend:
 
         return await asyncio.wait_for(scan(), timeout=self.timeout)
 
-    async def analyze_evidence(self, url, cookie=None):
+    async def analyze_evidence(self, url, cookie=None, tls=None):
         await self.ensure_pool(1)
         async with self.pool.get_driver() as driver:
             if cookie:
                 for cookie_dict in cookie_to_cookies(cookie):
                     driver.add_cookie(cookie_dict)
             return await asyncio.wait_for(
-                process_url_evidence(driver, url),
+                process_url_evidence(
+                    driver,
+                    url,
+                    tls_trust=tls.trust if tls is not None else TLSTrust.TRUSTED,
+                ),
                 timeout=self.timeout,
             )
 
@@ -390,7 +400,7 @@ class CompleteScanExecutor:
             url,
             cookie,
         )
-        browser_future = asyncio.ensure_future(self.browser_runner(url, cookie))
+        browser_future = asyncio.ensure_future(self.browser_runner(url, cookie, tls))
         static_value, browser_value = await asyncio.gather(
             static_future,
             browser_future,

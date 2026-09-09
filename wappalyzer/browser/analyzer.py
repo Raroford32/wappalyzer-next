@@ -10,6 +10,7 @@ import zipfile
 from contextlib import asynccontextmanager
 from http.cookies import SimpleCookie
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from playwright.async_api import async_playwright
@@ -34,6 +35,7 @@ from wappalyzer.models import (
     ResponseIdentity,
     StageName,
     StageStatus,
+    TLSTrust,
 )
 
 logger = logging.getLogger(__name__)
@@ -472,7 +474,15 @@ def _page_quiet(activity, quiet_ms=1000):
 
 
 class BrowserDriver:
-    def __init__(self, context, page, user_data_dir, extension_id, timeout_ms):
+    def __init__(
+        self,
+        context,
+        page,
+        user_data_dir,
+        extension_id,
+        timeout_ms,
+        route_state=None,
+    ):
         self.context = context
         self.page = page
         self.user_data_dir = Path(user_data_dir)
@@ -481,6 +491,10 @@ class BrowserDriver:
         self.popup = None
         self.pending_cookies = []
         self.healthy = True
+        self.route_state = route_state or {
+            "tls_exception_origin": None,
+            "policy_blocked": False,
+        }
 
     def add_cookie(self, cookie):
         self.pending_cookies.append(cookie)
@@ -549,11 +563,33 @@ class BrowserDriver:
         shutil.rmtree(self.user_data_dir, ignore_errors=True)
 
 
+def _http_origin(url):
+    parsed = urlsplit(url)
+    if parsed.scheme.casefold() not in {"http", "https"} or not parsed.hostname:
+        return None
+    default_port = 443 if parsed.scheme.casefold() == "https" else 80
+    try:
+        port = parsed.port or default_port
+    except ValueError:
+        return None
+    return parsed.scheme.casefold(), parsed.hostname.casefold(), port
+
+
+def _tls_exception_allows(url, exception_origin):
+    request_origin = _http_origin(url)
+    if exception_origin is None or request_origin is None:
+        return True
+    if request_origin[0] != "https":
+        return True
+    return request_origin == exception_origin
+
+
 class DriverPool:
-    def __init__(self, size=3, max_retries=3, timeout=30):
+    def __init__(self, size=3, max_retries=3, timeout=30, strict_tls=False):
         self.target_size = size
         self.max_retries = max_retries
         self.timeout = timeout
+        self.strict_tls = strict_tls
         self.queue = asyncio.Queue()
         self.closed = False
         self.playwright = None
@@ -593,6 +629,10 @@ class DriverPool:
             user_data_dir = tempfile.mkdtemp(prefix="wappalyzer-chromium-")
             context = None
             timeout_ms = self.timeout * 1000
+            route_state = {
+                "tls_exception_origin": None,
+                "policy_blocked": False,
+            }
 
             try:
                 context = await self.playwright.chromium.launch_persistent_context(
@@ -604,7 +644,7 @@ class DriverPool:
                     user_agent=USER_AGENT,
                     timezone_id="UTC",
                     reduced_motion="reduce",
-                    ignore_https_errors=not VERIFY_TLS,
+                    ignore_https_errors=False if self.strict_tls else not VERIFY_TLS,
                     args=[
                         f"--disable-extensions-except={self.extension_dir}",
                         f"--load-extension={self.extension_dir}",
@@ -645,6 +685,12 @@ class DriverPool:
                 async def route_handler(route):
                     if route.request.resource_type in BLOCKED_RESOURCE_TYPES:
                         await route.abort()
+                    elif not _tls_exception_allows(
+                        route.request.url,
+                        route_state["tls_exception_origin"],
+                    ):
+                        route_state["policy_blocked"] = True
+                        await route.abort()
                     else:
                         await route.continue_()
 
@@ -661,6 +707,7 @@ class DriverPool:
                     user_data_dir,
                     extension_id,
                     timeout_ms,
+                    route_state,
                 )
                 await _ensure_popup(driver)
 
@@ -1008,14 +1055,26 @@ async def _get_evidence_metrics(page):
     }
 
 
-async def _process_page(driver, url, *, raw):
+async def _process_page(driver, url, *, raw, tls_trust=TLSTrust.TRUSTED):
     page = await driver.context.new_page()
     driver.page = page
     response = None
     navigation_timed_out = False
+    certificate_session = None
+    driver.route_state["policy_blocked"] = False
 
     try:
         await driver.apply_pending_cookies(url)
+        if tls_trust is TLSTrust.UNTRUSTED:
+            exception_origin = _http_origin(url)
+            if exception_origin is None or exception_origin[0] != "https":
+                raise ValueError("untrusted TLS exception requires an HTTPS URL")
+            driver.route_state["tls_exception_origin"] = exception_origin
+            certificate_session = await driver.context.new_cdp_session(page)
+            await certificate_session.send(
+                "Security.setIgnoreCertificateErrors",
+                {"ignore": True},
+            )
 
         try:
             response = await page.goto(
@@ -1055,9 +1114,27 @@ async def _process_page(driver, url, *, raw):
             content,
             navigation_timed_out,
             evidence_metrics,
+            driver.route_state["policy_blocked"],
         )
     finally:
         cleanup_failures = []
+
+        if certificate_session is not None:
+            try:
+                await asyncio.wait_for(
+                    certificate_session.send(
+                        "Security.setIgnoreCertificateErrors",
+                        {"ignore": False},
+                    ),
+                    timeout=2,
+                )
+            except Exception as error:
+                cleanup_failures.append(f"certificate override: {error}")
+            try:
+                await asyncio.wait_for(certificate_session.detach(), timeout=2)
+            except Exception as error:
+                cleanup_failures.append(f"certificate session detach: {error}")
+        driver.route_state["tls_exception_origin"] = None
 
         try:
             await _clear_target_state(driver, page)
@@ -1081,7 +1158,15 @@ async def _process_page(driver, url, *, raw):
 
 
 async def process_url(driver, url):
-    detections, _effective_url, _status, _content, _timed_out, _metrics = await _process_page(
+    (
+        detections,
+        _effective_url,
+        _status,
+        _content,
+        _timed_out,
+        _metrics,
+        _policy_blocked,
+    ) = await _process_page(
         driver,
         url,
         raw=False,
@@ -1089,7 +1174,7 @@ async def process_url(driver, url):
     return url, detections
 
 
-def browser_evidence_truncations(detections, metrics, timed_out):
+def browser_evidence_truncations(detections, metrics, timed_out, policy_blocked=False):
     limits_by_channel = {}
 
     def add(channel, limit):
@@ -1099,6 +1184,10 @@ def browser_evidence_truncations(detections, metrics, timed_out):
         for channel, registration in CHANNEL_REGISTRY.items():
             if registration.owner is ChannelOwner.BROWSER:
                 add(channel, EvidenceLimit.TIMER)
+    if policy_blocked:
+        for channel, registration in CHANNEL_REGISTRY.items():
+            if registration.owner is ChannelOwner.BROWSER:
+                add(channel, EvidenceLimit.POLICY)
 
     limited_channels = ("dom", "html", "scripts", "text")
     if metrics is None:
@@ -1130,14 +1219,30 @@ def browser_evidence_truncations(detections, metrics, timed_out):
     )
 
 
-async def process_url_evidence(driver, url):
-    detections, effective_url, http_status, content, timed_out, metrics = await _process_page(
+async def process_url_evidence(driver, url, tls_trust=TLSTrust.TRUSTED):
+    if not isinstance(tls_trust, TLSTrust):
+        raise TypeError("tls_trust must be a TLSTrust")
+    (
+        detections,
+        effective_url,
+        http_status,
+        content,
+        timed_out,
+        metrics,
+        policy_blocked,
+    ) = await _process_page(
         driver,
         url,
         raw=True,
+        tls_trust=tls_trust,
     )
     raw = raw_browser_detections(detections)
-    truncations = browser_evidence_truncations(detections, metrics, timed_out)
+    truncations = browser_evidence_truncations(
+        detections,
+        metrics,
+        timed_out,
+        policy_blocked,
+    )
     status = (
         StageStatus.PARTIAL
         if truncations
