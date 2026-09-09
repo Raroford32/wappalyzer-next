@@ -153,6 +153,9 @@ def test_complete_browser_stage_returns_raw_evidence_and_response_identity(monke
     class Response:
         status = 202
 
+        async def body(self):
+            return b"<html><script>window.React = {}</script></html>"
+
     driver = FakeDriver()
     page = FakePage()
 
@@ -162,9 +165,6 @@ def test_complete_browser_stage_returns_raw_evidence_and_response_identity(monke
     async def goto(url, **kwargs):
         page.url = f"{url}/redirected"
         return Response()
-
-    async def content():
-        return "<html><script>window.React = {}</script></html>"
 
     async def no_stimulation(current_page):
         return None
@@ -189,7 +189,6 @@ def test_complete_browser_stage_returns_raw_evidence_and_response_identity(monke
 
     driver.context.new_page = new_page
     page.goto = goto
-    page.content = content
     monkeypatch.setattr(analyzer, "_stimulate_page", no_stimulation)
     monkeypatch.setattr(analyzer, "_get_detections", detections)
     monkeypatch.setattr(analyzer, "_clear_target_state", clear_state)
