@@ -1,5 +1,6 @@
 import asyncio
 import concurrent.futures
+import ipaddress
 import multiprocessing
 import os
 import sys
@@ -7,6 +8,7 @@ import threading
 import time
 from concurrent.futures.process import BrokenProcessPool
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from wappalyzer.browser.analyzer import (
     DriverPool,
@@ -21,11 +23,13 @@ from wappalyzer.core.analyzer import (
     asset_worker_count,
     http_scan,
 )
+from wappalyzer.core.direct_requester import DirectResponseFetcher
 from wappalyzer.core.regex_workers import RegexWorkerPool
-from wappalyzer.core.requester import DEFAULT_READ_TIMEOUT, get_response
+from wappalyzer.core.requester import DEFAULT_READ_TIMEOUT
 from wappalyzer.evidence import StageEvidence, merge_stage_evidence
 from wappalyzer.models import (
     FailureCode,
+    Endpoint,
     Protocol,
     StageName,
     StageStatus,
@@ -124,9 +128,20 @@ def _http_scan_job(url, scan_type, cookie, timeout, asset_workers):
     )
 
 
-def _static_stage_job(url, cookie, timeout, asset_workers, regex_pool=None):
+def _static_stage_job(url, cookie, timeout, asset_workers, tls, regex_pool=None):
     deadline = time.monotonic() + timeout
-    response = get_response(url, cookie, timeout=timeout)
+    parsed = urlsplit(url)
+    address = str(ipaddress.ip_address(parsed.hostname or ""))
+    endpoint = Endpoint(
+        address=address,
+        port=parsed.port or (443 if parsed.scheme.casefold() == "https" else 80),
+    )
+    response_fetcher = DirectResponseFetcher(
+        endpoint=endpoint,
+        tls=tls,
+        timeout=timeout,
+    )
+    response = response_fetcher(url, cookie=cookie, timeout=timeout)
     if response is None:
         raise ScanRequestError(f"Unable to fetch {url}")
     return analyze_static_stage(
@@ -137,6 +152,7 @@ def _static_stage_job(url, cookie, timeout, asset_workers, regex_pool=None):
         asset_workers=asset_workers,
         regex_pool=regex_pool,
         regex_timeout=timeout,
+        response_fetcher=response_fetcher,
     )
 
 
@@ -344,13 +360,14 @@ class CompleteScanExecutor:
         )
         self._closed = False
 
-    def _run_static(self, url, cookie):
+    def _run_static(self, url, cookie, tls):
         if self._default_static_runner:
             return self.static_runner(
                 url,
                 cookie,
                 self.timeout,
                 self.asset_workers,
+                tls,
                 self._regex_pool,
             )
         return self.static_runner(
@@ -358,6 +375,7 @@ class CompleteScanExecutor:
             cookie,
             self.timeout,
             self.asset_workers,
+            tls,
         )
 
     @staticmethod
@@ -401,6 +419,7 @@ class CompleteScanExecutor:
             self._run_static,
             url,
             cookie,
+            tls,
         )
         browser_future = asyncio.ensure_future(self.browser_runner(url, cookie, tls))
         static_value, browser_value = await asyncio.gather(

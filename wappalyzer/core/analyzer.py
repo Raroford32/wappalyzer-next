@@ -40,7 +40,6 @@ from wappalyzer.parsers.certIssuer import get_certIssuer
 from wappalyzer.parsers.css import get_css
 from wappalyzer.parsers.dns import get_dns
 from wappalyzer.parsers.meta import get_meta
-from wappalyzer.parsers.robots import get_robots
 from wappalyzer.parsers.scriptSrc import get_scriptSrc
 
 PATTERN_FIELDS = {
@@ -265,6 +264,7 @@ def _probe_responses(
     budget,
     asset_workers=None,
     max_bytes=ASSET_MAX_BYTES,
+    response_fetcher=get_response,
 ):
     urls = {path: urljoin(base_url, path) for probes in PROBES.values() for path in probes}
     responses = {}
@@ -279,7 +279,7 @@ def _probe_responses(
     ) as executor:
         futures = {
             executor.submit(
-                get_response,
+                response_fetcher,
                 url,
                 cookie,
                 timeout=timeout,
@@ -304,6 +304,13 @@ def _probe_responses(
     return responses
 
 
+def _get_robots_with(url, timeout, response_fetcher):
+    parsed = urlparse(url)
+    robots_url = f"{parsed.scheme}://{parsed.netloc}/robots.txt"
+    response = response_fetcher(robots_url, timeout=timeout)
+    return response.text if response else ""
+
+
 def collect_evidence(
     response,
     scan_type,
@@ -311,6 +318,7 @@ def collect_evidence(
     timeout=30,
     deadline=None,
     asset_workers=None,
+    response_fetcher=get_response,
 ):
     if deadline is None:
         deadline = time.monotonic() + timeout
@@ -385,9 +393,10 @@ def collect_evidence(
         with concurrent.futures.ThreadPoolExecutor(max_workers=auxiliary_workers) as executor:
             future_to_field = {
                 executor.submit(
-                    get_robots,
+                    _get_robots_with,
                     response.url,
-                    timeout=remaining,
+                    remaining,
+                    response_fetcher,
                 ): "robots",
                 executor.submit(
                     get_certIssuer,
@@ -402,6 +411,7 @@ def collect_evidence(
                     asset_budget,
                     nested_workers,
                     COMPLETE_PROBE_ITEM_BYTES_LIMIT if scan_type == "complete" else ASSET_MAX_BYTES,
+                    response_fetcher,
                 ): "probes",
             }
 
@@ -604,6 +614,7 @@ def analyze_static_stage(
     asset_workers=None,
     regex_pool=None,
     regex_timeout=None,
+    response_fetcher=get_response,
 ):
     prepare_matchers()
     evidence = collect_evidence(
@@ -613,6 +624,7 @@ def analyze_static_stage(
         timeout=timeout,
         deadline=deadline,
         asset_workers=asset_workers,
+        response_fetcher=response_fetcher,
     )
     worker_limits = {}
     error_codes = ()
@@ -644,6 +656,13 @@ def analyze_static_stage(
             if registration.owner is ChannelOwner.STATIC
         }
     truncation_limits = dict(evidence["_truncations"])
+    transport_limits = tuple(getattr(response_fetcher, "limits", ()))
+    if transport_limits:
+        for channel, registration in CHANNEL_REGISTRY.items():
+            if registration.owner is ChannelOwner.STATIC:
+                truncation_limits[channel] = tuple(
+                    dict.fromkeys((*truncation_limits.get(channel, ()), *transport_limits))
+                )
     for channel, limits in worker_limits.items():
         truncation_limits[channel] = tuple(
             dict.fromkeys((*truncation_limits.get(channel, ()), *limits))
