@@ -1,5 +1,6 @@
 import asyncio
 import hashlib
+import ipaddress
 import json
 import logging
 import os
@@ -493,6 +494,7 @@ class BrowserDriver:
         self.healthy = True
         self.route_state = route_state or {
             "tls_exception_origin": None,
+            "target_origin": None,
             "policy_blocked": False,
         }
 
@@ -584,6 +586,34 @@ def _tls_exception_allows(url, exception_origin):
     return request_origin == exception_origin
 
 
+def _browser_route_allows(url, target_origin):
+    request_origin = _http_origin(url)
+    if target_origin is None or request_origin is None:
+        return True
+    try:
+        address = ipaddress.ip_address(request_origin[1])
+    except ValueError:
+        return True
+    try:
+        target_address = ipaddress.ip_address(target_origin[1])
+    except ValueError:
+        target_address = None
+    if target_address == address and target_origin[2] == request_origin[2]:
+        return True
+    if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped is not None:
+        address = address.ipv4_mapped
+    return address.is_global and not any(
+        (
+            address.is_link_local,
+            address.is_loopback,
+            address.is_multicast,
+            address.is_private,
+            address.is_reserved,
+            address.is_unspecified,
+        )
+    )
+
+
 class DriverPool:
     def __init__(self, size=3, max_retries=3, timeout=30, strict_tls=False):
         self.target_size = size
@@ -631,6 +661,7 @@ class DriverPool:
             timeout_ms = self.timeout * 1000
             route_state = {
                 "tls_exception_origin": None,
+                "target_origin": None,
                 "policy_blocked": False,
             }
 
@@ -685,9 +716,11 @@ class DriverPool:
                 async def route_handler(route):
                     if route.request.resource_type in BLOCKED_RESOURCE_TYPES:
                         await route.abort()
-                    elif not _tls_exception_allows(
+                    elif not _browser_route_allows(
                         route.request.url,
-                        route_state["tls_exception_origin"],
+                        route_state["target_origin"],
+                    ) or not _tls_exception_allows(
+                        route.request.url, route_state["tls_exception_origin"]
                     ):
                         route_state["policy_blocked"] = True
                         await route.abort()
@@ -1063,6 +1096,7 @@ async def _process_page(driver, url, *, raw, tls_trust=TLSTrust.TRUSTED):
     navigation_timed_out = False
     certificate_session = None
     driver.route_state["policy_blocked"] = False
+    driver.route_state["target_origin"] = _http_origin(url)
 
     try:
         await driver.apply_pending_cookies(url)
@@ -1135,6 +1169,7 @@ async def _process_page(driver, url, *, raw, tls_trust=TLSTrust.TRUSTED):
             except Exception as error:
                 cleanup_failures.append(f"certificate session detach: {error}")
         driver.route_state["tls_exception_origin"] = None
+        driver.route_state["target_origin"] = None
 
         try:
             await _clear_target_state(driver, page)
