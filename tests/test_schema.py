@@ -86,9 +86,7 @@ def _validate(instance, schema, root):
             encoded = [json.dumps(item, sort_keys=True) for item in instance]
             assert len(encoded) == len(set(encoded))
         if "contains" in schema:
-            match_count = sum(
-                _matches(value, schema["contains"], root) for value in instance
-            )
+            match_count = sum(_matches(value, schema["contains"], root) for value in instance)
             assert match_count >= schema.get("minContains", 1)
             if "maxContains" in schema:
                 assert match_count <= schema["maxContains"]
