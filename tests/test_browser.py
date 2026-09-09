@@ -24,6 +24,14 @@ class FakePage:
     async def goto(self, url, **kwargs):
         self.url = url
 
+    async def evaluate(self, _script, *_args):
+        return {
+            "htmlCharacters": 0,
+            "textCharacters": 0,
+            "inlineScriptCount": 0,
+            "inlineScriptCharacters": 0,
+        }
+
     async def close(self):
         self.closed = True
 
