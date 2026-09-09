@@ -335,9 +335,7 @@ def collect_evidence(
     if scan_type != "fast" and remaining > 0:
         auxiliary_workers = min(4, asset_workers)
         nested_workers = max(1, asset_workers // 2)
-        with concurrent.futures.ThreadPoolExecutor(
-            max_workers=auxiliary_workers
-        ) as executor:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=auxiliary_workers) as executor:
             future_to_field = {
                 executor.submit(
                     get_robots,
