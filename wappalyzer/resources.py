@@ -5,6 +5,7 @@ import threading
 from concurrent.futures import CancelledError
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Optional
 
 MIB = 1024**2
 GIB = 1024**3
@@ -73,13 +74,13 @@ class ResourceRequest:
 @dataclass(frozen=True)
 class ResourceSnapshot:
     cpu_count: int
-    memory_bytes: int | None
-    file_descriptors: int | None
-    sockets: int | None
-    processes: int | None
-    shared_memory_bytes: int | None
-    temp_bytes: int | None
-    artifact_bytes: int | None
+    memory_bytes: Optional[int]
+    file_descriptors: Optional[int]
+    sockets: Optional[int]
+    processes: Optional[int]
+    shared_memory_bytes: Optional[int]
+    temp_bytes: Optional[int]
+    artifact_bytes: Optional[int]
     file_descriptors_used: int = 0
     sockets_used: int = 0
     processes_used: int = 0
@@ -642,7 +643,7 @@ class ResourceLease:
 @dataclass
 class _Waiter:
     request: ResourceRequest
-    cancel_event: object | None = None
+    cancel_event: Optional[object] = None
     marker: object = field(default_factory=object)
 
 
