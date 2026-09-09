@@ -21,8 +21,8 @@ from wappalyzer.core.analyzer import (
     asset_worker_count,
     http_scan,
 )
-from wappalyzer.core.requester import DEFAULT_READ_TIMEOUT, get_response
 from wappalyzer.core.regex_workers import RegexWorkerPool
+from wappalyzer.core.requester import DEFAULT_READ_TIMEOUT, get_response
 from wappalyzer.evidence import StageEvidence, merge_stage_evidence
 from wappalyzer.models import (
     FailureCode,
