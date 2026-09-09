@@ -1,0 +1,217 @@
+from dataclasses import FrozenInstanceError
+
+import pytest
+
+from wappalyzer import evidence
+from wappalyzer.core import utils
+from wappalyzer.evidence import (
+    EvidenceLimit,
+    EvidenceTruncation,
+    RawDetection,
+    ResponseIdentity,
+    StageEvidence,
+    merge_stage_evidence,
+    resolve_raw_detections,
+)
+from wappalyzer.models import (
+    CHANNEL_REGISTRY,
+    ChannelOwner,
+    Protocol,
+    ProtocolObservation,
+    ProtocolStatus,
+    StageName,
+    StageStatus,
+    TLSMetadata,
+    TLSTrust,
+)
+
+DIGEST_A = "a" * 64
+DIGEST_B = "b" * 64
+DIGEST_C = "c" * 64
+
+
+def raw(
+    technology,
+    channel,
+    source_key,
+    *,
+    version="",
+    confidence=100,
+    evidence_sha256=DIGEST_A,
+):
+    return RawDetection(
+        technology=technology,
+        channel=channel,
+        source_key=source_key,
+        evidence_sha256=evidence_sha256,
+        version=version,
+        confidence=confidence,
+    )
+
+
+def identity(url="http://192.0.2.1:8080/", digest=DIGEST_A):
+    return ResponseIdentity(
+        effective_url=url,
+        http_status=200,
+        content_sha256=digest,
+    )
+
+
+def test_complete_channel_ownership_uses_browser_for_runtime_observations():
+    browser_channels = {
+        "cookies",
+        "css",
+        "dom",
+        "headers",
+        "html",
+        "js",
+        "meta",
+        "scriptSrc",
+        "scripts",
+        "text",
+        "url",
+        "xhr",
+    }
+    static_channels = {"certIssuer", "dns", "probe", "robots"}
+
+    assert {
+        name
+        for name, registration in CHANNEL_REGISTRY.items()
+        if registration.owner is ChannelOwner.BROWSER
+    } == browser_channels
+    assert {
+        name
+        for name, registration in CHANNEL_REGISTRY.items()
+        if registration.owner is ChannelOwner.STATIC
+    } == static_channels
+
+
+def test_raw_detections_are_immutable_validated_and_privacy_bounded():
+    detection = raw("React", "js", "react-global", version="19.1.0", confidence=50)
+
+    with pytest.raises(FrozenInstanceError):
+        detection.confidence = 100
+    with pytest.raises(ValueError):
+        raw("React", "unknown", "source")
+    with pytest.raises(ValueError):
+        raw("React", "js", "source", confidence=101)
+    with pytest.raises(ValueError):
+        raw("React", "js", "source", evidence_sha256="raw secret")
+
+
+def test_resolver_deduplicates_one_source_and_combines_distinct_sources(monkeypatch):
+    database = {
+        "A": {"cats": [], "implies": r"B\;confidence:80"},
+        "B": {"cats": []},
+    }
+    monkeypatch.setattr(utils, "tech_db", database)
+    monkeypatch.setattr(evidence, "tech_db", database)
+
+    candidates = (
+        raw("A", "html", "same-pattern", version="9", confidence=25),
+        raw(
+            "A",
+            "html",
+            "same-pattern",
+            version="10",
+            confidence=25,
+            evidence_sha256=DIGEST_B,
+        ),
+        raw("A", "dom", "distinct-pattern", confidence=50),
+    )
+
+    resolved = resolve_raw_detections(reversed(candidates))
+
+    assert [(item.name, item.version, item.confidence) for item in resolved] == [
+        ("A", "10", 75),
+        ("B", "", 75),
+    ]
+
+
+def test_stage_rejects_candidates_owned_by_another_execution_path():
+    with pytest.raises(ValueError, match="owned by browser"):
+        StageEvidence(
+            name=StageName.STATIC,
+            status=StageStatus.SUCCESS,
+            response_identity=identity(),
+            detections=(raw("React", "js", "react-global"),),
+        )
+
+
+def test_truncation_forces_partial_without_discarding_stage_evidence():
+    stage = StageEvidence(
+        name=StageName.BROWSER,
+        status=StageStatus.PARTIAL,
+        response_identity=identity(),
+        detections=(raw("React", "js", "react-global"),),
+        truncations=(
+            EvidenceTruncation(
+                channel="js",
+                limits=(EvidenceLimit.TIMER,),
+            ),
+        ),
+    )
+
+    protocol = merge_stage_evidence(
+        protocol=Protocol.HTTP,
+        requested_url="http://192.0.2.1:8080/",
+        tls=TLSMetadata(present=False, trust=TLSTrust.NOT_APPLICABLE),
+        stages=(stage,),
+    )
+
+    assert protocol.status is ProtocolStatus.PARTIAL
+    assert protocol.stages[0].status is StageStatus.PARTIAL
+    assert protocol.stages[0].technologies[0].name == "React"
+    assert protocol.stages[0].truncations[0].channel == "js"
+
+
+def test_coherent_stages_resolve_once_but_divergent_observations_stay_separate():
+    static = StageEvidence(
+        name=StageName.STATIC,
+        status=StageStatus.SUCCESS,
+        response_identity=identity(),
+        detections=(raw("StaticTech", "robots", "robots-pattern"),),
+    )
+    browser = StageEvidence(
+        name=StageName.BROWSER,
+        status=StageStatus.SUCCESS,
+        response_identity=identity(),
+        detections=(raw("RuntimeTech", "js", "global-pattern"),),
+    )
+    tls = TLSMetadata(present=False, trust=TLSTrust.NOT_APPLICABLE)
+
+    coherent = merge_stage_evidence(
+        protocol=Protocol.HTTP,
+        requested_url="http://192.0.2.1:8080/",
+        tls=tls,
+        stages=(static, browser),
+    )
+    divergent = merge_stage_evidence(
+        protocol=Protocol.HTTP,
+        requested_url="http://192.0.2.1:8080/",
+        tls=tls,
+        stages=(
+            static,
+            StageEvidence(
+                name=StageName.BROWSER,
+                status=StageStatus.SUCCESS,
+                response_identity=identity(
+                    "http://192.0.2.1:8080/redirected",
+                    DIGEST_C,
+                ),
+                detections=browser.detections,
+            ),
+        ),
+    )
+
+    assert coherent.observation is ProtocolObservation.SINGLE
+    assert [item.name for item in coherent.technologies] == [
+        "RuntimeTech",
+        "StaticTech",
+    ]
+    assert divergent.observation is ProtocolObservation.MULTI
+    assert divergent.technologies == ()
+    assert [stage.technologies[0].name for stage in divergent.stages] == [
+        "StaticTech",
+        "RuntimeTech",
+    ]
