@@ -833,11 +833,7 @@ async def _get_detections(driver, target_url):
         elif isinstance(response, list):
             last_successful_detections = response
 
-        detections = (
-            last_successful_detections
-            if last_successful_detections is not None
-            else []
-        )
+        detections = last_successful_detections if last_successful_detections is not None else []
         signature = _detection_signature(detections)
         activity = await _page_activity(driver.page)
         activity_signature = _activity_signature(activity)

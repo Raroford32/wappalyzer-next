@@ -50,11 +50,7 @@ def get_version(match, version_type):
 def normalize_version(version):
     version = normalize_match_value(version).strip()
 
-    if (
-        not version
-        or len(version) > 15
-        or not re.fullmatch(r"[A-Za-z0-9._-]+", version)
-    ):
+    if not version or len(version) > 15 or not re.fullmatch(r"[A-Za-z0-9._-]+", version):
         return ""
 
     numeric_prefix = re.match(r"\d+", version)

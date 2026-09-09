@@ -451,9 +451,7 @@ def publish_generated_files(output_dir, data_dir):
     output_dir = Path(output_dir)
     data_dir = Path(data_dir)
     names = sorted(
-        path.name
-        for path in output_dir.iterdir()
-        if path.name != FINGERPRINT_LOCK.name
+        path.name for path in output_dir.iterdir() if path.name != FINGERPRINT_LOCK.name
     ) + [FINGERPRINT_LOCK.name]
     published = []
 

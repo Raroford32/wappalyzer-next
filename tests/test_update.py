@@ -50,16 +50,16 @@ const Driver = {
     await somethingUnbounded()
   },
 
+  closeCurrentTab(tabId) {
+    return tabId
+  },
+
   analyzeDom() {
     const result = ({ name, selector, exists, text, property, attribute, value }, index)
 
     if (typeof property !== 'undefined') {
       return result
     }
-  },
-
-  closeCurrentTab(tabId) {
-    return tabId
   },
 }
 """
@@ -131,12 +131,7 @@ def test_chromium_extension_archive_is_byte_reproducible(tmp_path):
 
 
 def test_generated_bundle_has_complete_scanner_patches():
-    archive_path = (
-        Path(__file__).parent.parent
-        / "wappalyzer"
-        / "data"
-        / "wappalyzer-extension.zip"
-    )
+    archive_path = Path(__file__).parent.parent / "wappalyzer" / "data" / "wappalyzer-extension.zip"
 
     with zipfile.ZipFile(archive_path) as archive:
         index = archive.read("js/index.js").decode()
@@ -182,7 +177,6 @@ def test_generated_publication_rolls_back_on_failure(tmp_path, monkeypatch):
     with pytest.raises(OSError, match="injected"):
         update.publish_generated_files(output_dir, data_dir)
 
-    assert {
-        name: (data_dir / name).read_text(encoding="utf-8")
-        for name in names
-    } == {name: f"old {name}" for name in names}
+    assert {name: (data_dir / name).read_text(encoding="utf-8") for name in names} == {
+        name: f"old {name}" for name in names
+    }

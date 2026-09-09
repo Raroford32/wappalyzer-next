@@ -20,8 +20,7 @@ class HonoHandler(BaseHTTPRequestHandler):
             "hono": b"<!doctype html><main>Hono integration fixture</main>",
             "plain": b"<!doctype html><main>Plain integration fixture</main>",
             "delayed-js": (
-                b"<script>setTimeout(() => { window.React = "
-                b"{ version: '19.1.0' } }, 3500)</script>"
+                b"<script>setTimeout(() => { window.React = { version: '19.1.0' } }, 3500)</script>"
             ),
             "html": b"<span data-avatar='gravatar.com/avatar/example'></span>",
             "dom-src": b"<img src='https://cdn.getyourguide.com/example.png'>",

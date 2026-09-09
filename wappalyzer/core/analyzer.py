@@ -308,9 +308,7 @@ def collect_evidence(
                 asset_workers,
             )
             scripts.extend(
-                fetched_scripts[url]
-                for url in script_sources
-                if fetched_scripts.get(url)
+                fetched_scripts[url] for url in script_sources if fetched_scripts.get(url)
             )
 
         css_urls = _stylesheet_urls(response.url, soup)
