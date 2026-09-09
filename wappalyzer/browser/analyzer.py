@@ -526,9 +526,8 @@ class DriverPool:
         self.playwright = await async_playwright().start()
         self.extension_dir = _prepare_extension_dir(os.path.abspath(extension_path))
 
-        created = await asyncio.gather(*(self._create_driver() for _ in range(self.target_size)))
-
-        for driver in created:
+        for _index in range(self.target_size):
+            driver = await self._create_driver()
             if driver:
                 self.drivers.append(driver)
                 await self.queue.put(driver)
@@ -541,9 +540,8 @@ class DriverPool:
             return
 
         additional = size - len(self.drivers)
-        created = await asyncio.gather(*(self._create_driver() for _ in range(additional)))
-
-        for driver in created:
+        for _index in range(additional):
+            driver = await self._create_driver()
             if driver:
                 self.drivers.append(driver)
                 await self.queue.put(driver)

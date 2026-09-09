@@ -67,11 +67,9 @@ class ScanRequestError(RuntimeError):
 
 def asset_worker_count(cpu_budget=None):
     override = os.getenv("WAPPALYZER_ASSET_WORKERS")
-
-    if override:
-        return max(1, int(override))
-
-    return max(1, cpu_budget or os.cpu_count() or 1)
+    available = max(1, cpu_budget or os.cpu_count() or 1)
+    requested = max(1, int(override)) if override else available
+    return min(requested, available)
 
 
 def _remaining_seconds(deadline):
@@ -335,7 +333,11 @@ def collect_evidence(
     remaining = _remaining_seconds(deadline)
 
     if scan_type != "fast" and remaining > 0:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+        auxiliary_workers = min(4, asset_workers)
+        nested_workers = max(1, asset_workers // 2)
+        with concurrent.futures.ThreadPoolExecutor(
+            max_workers=auxiliary_workers
+        ) as executor:
             future_to_field = {
                 executor.submit(
                     get_robots,
@@ -353,7 +355,7 @@ def collect_evidence(
                     remaining,
                     cookie,
                     asset_budget,
-                    asset_workers,
+                    nested_workers,
                 ): "probes",
             }
 
@@ -363,6 +365,7 @@ def collect_evidence(
                         get_dns,
                         domain,
                         timeout=min(remaining, 5),
+                        workers=nested_workers,
                     )
                 ] = "dns"
 

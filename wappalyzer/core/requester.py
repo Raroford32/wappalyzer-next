@@ -18,10 +18,9 @@ _state = threading.local()
 
 def _new_session():
     session = requests.Session()
-    pool_size = max(1, os.cpu_count() or 1)
     adapter = HTTPAdapter(
-        pool_connections=pool_size,
-        pool_maxsize=pool_size,
+        pool_connections=1,
+        pool_maxsize=1,
         max_retries=0,
         pool_block=True,
     )

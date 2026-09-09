@@ -15,6 +15,13 @@ from wappalyzer.browser.analyzer import (
 )
 from wappalyzer.core.analyzer import asset_worker_count, http_scan
 from wappalyzer.core.requester import DEFAULT_READ_TIMEOUT
+from wappalyzer.resources import (
+    DEFAULT_RESOURCE_PROFILE,
+    ResourceBroker,
+    WorkerCounts,
+    autosize,
+    capture_snapshot,
+)
 
 
 def _available_memory_bytes():
@@ -242,7 +249,15 @@ class _FullScanBackend:
 class Wappalyzer:
     SUPPORTED_SCAN_TYPES = {"fast", "balanced", "full"}
 
-    def __init__(self, scan_type="full", workers=None, cookie=None, timeout=None):
+    def __init__(
+        self,
+        scan_type="full",
+        workers=None,
+        cookie=None,
+        timeout=None,
+        resource_snapshot=None,
+        resource_profile=None,
+    ):
         scan_type = scan_type.lower()
 
         if scan_type not in self.SUPPORTED_SCAN_TYPES:
@@ -251,6 +266,8 @@ class Wappalyzer:
                 f"Expected one of: {', '.join(sorted(self.SUPPORTED_SCAN_TYPES))}"
             )
 
+        snapshot = resource_snapshot or capture_snapshot()
+        profile = resource_profile or DEFAULT_RESOURCE_PROFILE
         if workers is None:
             workers = automatic_worker_count(scan_type)
 
@@ -263,10 +280,31 @@ class Wappalyzer:
         if timeout < 1:
             raise ValueError("timeout must be at least 1 second")
 
+        requested = (
+            WorkerCounts(discovery=0, static=0, browser=workers)
+            if scan_type == "full"
+            else WorkerCounts(discovery=workers, static=workers, browser=0)
+        )
+        resource_plan = autosize(snapshot, profile, requested=requested)
+        selected_workers = (
+            resource_plan.selected.browser
+            if scan_type == "full"
+            else min(
+                resource_plan.selected.discovery,
+                resource_plan.selected.static,
+            )
+        )
+        if selected_workers < 1:
+            reasons = ", ".join(resource_plan.insufficiency_reasons) or "worker capacity"
+            raise RuntimeError(f"Insufficient resources for one complete worker: {reasons}")
+
         self.scan_type = scan_type
-        self.workers = workers
+        self.workers = selected_workers
+        self.requested_workers = workers
         self.cookie = cookie
         self.timeout = timeout
+        self.resource_plan = resource_plan
+        self.resource_broker = ResourceBroker(snapshot.broker_capacity())
         self._closed = False
         self._runner = None
         self._full_backend = None
