@@ -256,3 +256,19 @@ def test_invalid_input_requires_invalid_input_error_code():
 
     with pytest.raises(AssertionError):
         _validate(document, schema, schema)
+
+
+def test_schema_requires_partial_status_for_truncation_and_stage_scopes_divergence():
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+
+    truncated = valid_document()
+    truncated["protocols"][0]["stages"][0]["truncations"] = [
+        {"channel": "robots", "limits": ["timer"]}
+    ]
+    with pytest.raises(AssertionError):
+        _validate(truncated, schema, schema)
+
+    divergent = valid_document()
+    divergent["protocols"][0]["observation"] = "multi_observation"
+    with pytest.raises(AssertionError):
+        _validate(divergent, schema, schema)
