@@ -265,3 +265,194 @@ def test_empty_stage_identity_does_not_split_evidence_bearing_observation():
     assert result.observation is ProtocolObservation.SINGLE
     assert result.status is ProtocolStatus.SUCCESS
     assert [technology.name for technology in result.technologies] == ["RuntimeTech"]
+
+
+@pytest.mark.parametrize(
+    ("factory", "exception", "message"),
+    [
+        pytest.param(
+            lambda: raw("", "js", "source"),
+            ValueError,
+            "technology must be a non-empty string",
+            id="technology",
+        ),
+        pytest.param(
+            lambda: raw("React", "js", "source", version=19),
+            TypeError,
+            "version must be a string",
+            id="version",
+        ),
+        pytest.param(
+            lambda: StageEvidence("static", StageStatus.SUCCESS_EMPTY, None),
+            TypeError,
+            "name must be a StageName",
+            id="stage-name",
+        ),
+        pytest.param(
+            lambda: StageEvidence(StageName.STATIC, "success_empty", None),
+            TypeError,
+            "status must be a StageStatus",
+            id="stage-status",
+        ),
+        pytest.param(
+            lambda: StageEvidence(StageName.STATIC, StageStatus.SUCCESS_EMPTY, "response"),
+            TypeError,
+            "response_identity must be a ResponseIdentity or None",
+            id="response-identity",
+        ),
+        pytest.param(
+            lambda: StageEvidence(
+                StageName.STATIC,
+                StageStatus.SUCCESS_EMPTY,
+                None,
+                detections=("detection",),
+            ),
+            TypeError,
+            "detections must contain only RawDetection values",
+            id="detection-type",
+        ),
+        pytest.param(
+            lambda: StageEvidence(
+                StageName.STATIC,
+                StageStatus.SUCCESS_EMPTY,
+                None,
+                error_codes=("scan_timeout",),
+            ),
+            TypeError,
+            "error_codes must contain only FailureCode values",
+            id="error-code-type",
+        ),
+        pytest.param(
+            lambda: StageEvidence(
+                StageName.STATIC,
+                StageStatus.SUCCESS_EMPTY,
+                None,
+                truncations=("truncation",),
+            ),
+            TypeError,
+            "truncations must contain only EvidenceTruncation values",
+            id="truncation-type",
+        ),
+        pytest.param(
+            lambda: StageEvidence(
+                StageName.BROWSER,
+                StageStatus.SUCCESS,
+                identity(),
+                truncations=(EvidenceTruncation("js", (EvidenceLimit.COUNT,)),),
+            ),
+            ValueError,
+            "truncated stage evidence must have partial status",
+            id="truncation-status",
+        ),
+    ],
+)
+def test_raw_and_stage_evidence_validation_contracts(factory, exception, message):
+    with pytest.raises(exception, match=message):
+        factory()
+
+
+def test_resolver_rejects_foreign_values_and_ignores_zero_confidence(monkeypatch):
+    monkeypatch.setattr(
+        utils,
+        "tech_db",
+        {
+            "Ignored": {"cats": []},
+            "Kept": {"cats": []},
+        },
+    )
+
+    with pytest.raises(TypeError, match="detections must contain only RawDetection values"):
+        resolve_raw_detections((object(),))
+
+    resolved = resolve_raw_detections(
+        (
+            raw("Ignored", "html", "ignored", confidence=0),
+            raw("Kept", "html", "kept", confidence=40),
+        )
+    )
+
+    assert [(item.name, item.confidence) for item in resolved] == [("Kept", 40)]
+
+
+def _empty_static_stage():
+    return StageEvidence(
+        name=StageName.STATIC,
+        status=StageStatus.SUCCESS_EMPTY,
+        response_identity=identity(),
+    )
+
+
+@pytest.mark.parametrize(
+    ("factory", "exception", "message"),
+    [
+        pytest.param(
+            lambda: merge_stage_evidence(
+                protocol="http",
+                requested_url="http://192.0.2.1:8080/",
+                tls=TLSMetadata(False, TLSTrust.NOT_APPLICABLE),
+                stages=(_empty_static_stage(),),
+            ),
+            TypeError,
+            "protocol must be a Protocol",
+            id="protocol",
+        ),
+        pytest.param(
+            lambda: merge_stage_evidence(
+                protocol=Protocol.HTTP,
+                requested_url="",
+                tls=TLSMetadata(False, TLSTrust.NOT_APPLICABLE),
+                stages=(_empty_static_stage(),),
+            ),
+            ValueError,
+            "requested_url must be a non-empty string",
+            id="requested-url",
+        ),
+        pytest.param(
+            lambda: merge_stage_evidence(
+                protocol=Protocol.HTTP,
+                requested_url="http://192.0.2.1:8080/",
+                tls="tls",
+                stages=(_empty_static_stage(),),
+            ),
+            TypeError,
+            "tls must be TLSMetadata",
+            id="tls",
+        ),
+        pytest.param(
+            lambda: merge_stage_evidence(
+                protocol=Protocol.HTTP,
+                requested_url="http://192.0.2.1:8080/",
+                tls=TLSMetadata(False, TLSTrust.NOT_APPLICABLE),
+                stages=(),
+            ),
+            ValueError,
+            "at least one stage is required",
+            id="empty-stages",
+        ),
+        pytest.param(
+            lambda: merge_stage_evidence(
+                protocol=Protocol.HTTP,
+                requested_url="http://192.0.2.1:8080/",
+                tls=TLSMetadata(False, TLSTrust.NOT_APPLICABLE),
+                stages=("static",),
+            ),
+            TypeError,
+            "stages must contain only StageEvidence values",
+            id="stage-type",
+        ),
+        pytest.param(
+            lambda: merge_stage_evidence(
+                protocol=Protocol.HTTP,
+                requested_url="http://192.0.2.1:8080/",
+                tls=TLSMetadata(False, TLSTrust.NOT_APPLICABLE),
+                stages=(_empty_static_stage(), _empty_static_stage()),
+            ),
+            ValueError,
+            "stages must contain at most one result per stage",
+            id="duplicate-stage",
+        ),
+    ],
+)
+def test_merge_stage_evidence_validation_contracts(factory, exception, message):
+    with pytest.raises(exception, match=message):
+        factory()

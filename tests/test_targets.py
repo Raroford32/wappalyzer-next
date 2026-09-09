@@ -4,7 +4,7 @@ import io
 import pytest
 
 from wappalyzer.models import Endpoint, TargetOccurrence
-from wappalyzer.targets import MAX_TARGET_LINE_BYTES, TargetFileSummary, ingest_targets
+from wappalyzer.targets import MAX_TARGET_LINE_BYTES, TargetFileSummary, _port, ingest_targets
 
 
 def _sha256(value):
@@ -198,6 +198,9 @@ def test_line_limit_and_validity_are_enforced_before_ignoring_comments_and_blank
         b"2001:db8::1]:443\n",
         b"[2001:db8::1]443\n",
         b"192.0.2.1:80 # inline comments are invalid\n",
+        b"256.0.0.1:80\n",
+        b"[2001:db8::1]:0\n",
+        b"[not-an-ip]:443\n",
     ],
 )
 def test_invalid_endpoint_grammar_emits_an_invalid_occurrence(raw):
@@ -349,3 +352,94 @@ def test_record_sink_backpressure_prevents_eager_binary_input_consumption():
 
     assert source.reads == 1
     assert [record.endpoint for record in records] == [Endpoint(address="192.0.2.1", port=80)]
+
+
+def test_port_parser_rejects_non_numeric_and_out_of_range_text():
+    assert _port("not-a-port") is None
+    assert _port("0") is None
+    assert _port("65536") is None
+    assert _port("443") == 443
+
+
+@pytest.mark.parametrize(
+    ("source", "message"),
+    [
+        pytest.param(
+            object(),
+            "target source must be a binary file or iterable of chunks",
+            id="non-iterable",
+        ),
+        pytest.param(
+            iter(("192.0.2.1:80\n",)),
+            "target source must provide binary chunks",
+            id="text-iterator",
+        ),
+        pytest.param(
+            io.StringIO("192.0.2.1:80\n"),
+            "target source must provide binary chunks",
+            id="text-file",
+        ),
+        pytest.param(
+            iter((memoryview(b"abcd")[::2],)),
+            "target source chunks must be contiguous bytes",
+            id="non-contiguous-memoryview",
+        ),
+    ],
+)
+def test_target_source_requires_binary_contiguous_chunks(source, message):
+    with pytest.raises(TypeError, match=message):
+        ingest_targets(source, lambda record: None)
+
+
+def test_target_sink_must_be_callable():
+    with pytest.raises(TypeError, match="target sink must be callable"):
+        ingest_targets(iter(()), None)
+
+
+def test_empty_chunks_are_ignored_without_ending_the_stream():
+    records = []
+
+    summary = ingest_targets(
+        iter((b"", b"192.0.2.1:80\n", b"")),
+        records.append,
+    )
+
+    assert [record.endpoint for record in records] == [Endpoint("192.0.2.1", 80)]
+    assert summary.byte_count == len(b"192.0.2.1:80\n")
+    assert summary.physical_line_count == 1
+
+
+@pytest.mark.parametrize(
+    "chunks",
+    [
+        pytest.param(
+            (b"192.0.2.1:80\r", b"x\n"),
+            id="carriage-return-before-non-newline",
+        ),
+        pytest.param(
+            (b"192.0.2.1:80\r",),
+            id="unterminated-carriage-return",
+        ),
+        pytest.param(
+            (b" " * MAX_TARGET_LINE_BYTES + b"\r", b"x\n"),
+            id="full-retention-buffer",
+        ),
+    ],
+)
+def test_carriage_returns_are_retained_unless_they_terminate_a_line(chunks):
+    records = []
+    raw = b"".join(chunks)
+
+    summary = ingest_targets(iter(chunks), records.append)
+
+    assert records == [
+        TargetOccurrence(
+            sequence=0,
+            line_number=1,
+            byte_offset=0,
+            line_digest=_sha256(raw),
+            endpoint=None,
+        )
+    ]
+    assert summary.physical_line_count == 1
+    assert summary.invalid_occurrence_count == 1
