@@ -141,6 +141,7 @@ def test_generated_bundle_has_complete_scanner_patches():
     assert "setCachedOption('tracking', false)" in index
     assert "setCachedOption('showCached', false)" in index
     assert "data-wappalyzer-scanner-state" in content
+    assert "return !!(html || text || css || scripts.length)" in content
     assert "function repairSelector(selector)" in content
     assert "src: value" in content
     assert "html: document.documentElement.outerHTML" in content

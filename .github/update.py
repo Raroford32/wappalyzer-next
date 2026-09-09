@@ -116,6 +116,16 @@ def patch_index_js(content):
 def patch_content_js(content):
     content = replace_once(
         content,
+        """function hasHeavySignals({ text = '', css = '', scripts = [] } = {}) {
+  return !!(text || css || scripts.length)
+}""",
+        """function hasHeavySignals({ html = '', text = '', css = '', scripts = [] } = {}) {
+  return !!(html || text || css || scripts.length)
+}""",
+        "HTML heavy-signal admission",
+    )
+    content = replace_once(
+        content,
         "const MAX_DOM_TEXT_LENGTH = 1000000",
         "const MAX_DOM_TEXT_LENGTH = 1000000\nconst MAX_HTML_LENGTH = 2000000",
         "HTML collection limit",
