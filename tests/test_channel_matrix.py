@@ -29,7 +29,7 @@ BROWSER_CHANNELS = (
 STATIC_CASES = {
     "certIssuer": (
         "matrix-cert-issuer",
-        "Matrix Certificate Authority",
+        "Matrix-Cert-Issuer",
         "Other Certificate Authority",
     ),
     "dns": (
