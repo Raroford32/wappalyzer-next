@@ -1587,6 +1587,18 @@ def test_repository_rejects_unsafe_generation_entry(tmp_path):
         GenerationRepository(root).acquire(_run_spec(b""))
 
 
+def test_repository_ignores_unrelated_root_entries_when_allocating_generation(tmp_path):
+    root = tmp_path / "artifacts"
+    root.mkdir()
+    unrelated = root / "README"
+    unrelated.write_text("repository metadata")
+
+    with GenerationRepository(root).acquire(_run_spec(b"")) as acquired:
+        assert acquired.resumed is False
+        assert acquired.path.name.startswith("generation-")
+        assert unrelated.read_text() == "repository metadata"
+
+
 def test_repository_releases_lock_when_existing_generation_is_corrupt(tmp_path):
     repository = GenerationRepository(tmp_path / "artifacts")
     spec = _run_spec(b"")
