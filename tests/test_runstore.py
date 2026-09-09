@@ -153,12 +153,9 @@ def test_ingest_preserves_occurrences_deduplicates_endpoint_work_and_outboxes_in
         occurrences = list(store.iter_occurrences())
         assert [item.sequence for item in occurrences] == [0, 1, 2]
         assert [item.line_number for item in occurrences] == [1, 3, 4]
-        assert len(
-            {
-                (item.sequence, item.line_number, item.byte_offset)
-                for item in occurrences
-            }
-        ) == 3
+        assert (
+            len({(item.sequence, item.line_number, item.byte_offset) for item in occurrences}) == 3
+        )
         assert occurrences[0].endpoint == occurrences[1].endpoint
 
         counts = store.counts

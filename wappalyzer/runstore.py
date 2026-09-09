@@ -36,10 +36,10 @@ from wappalyzer.models import (
     StageResult,
     StageStatus,
     StaleClaimError,
-    TLSMetadata,
-    TLSTrust,
     TargetOccurrence,
     Technology,
+    TLSMetadata,
+    TLSTrust,
     aggregate_occurrence_status,
     canonical_json_bytes,
 )
@@ -364,8 +364,7 @@ def _protocol_document(result: ProtocolResult) -> Dict[str, object]:
             )
         ],
         "error_codes": [
-            code.value
-            for code in sorted(set(result.error_codes), key=failure_rank.__getitem__)
+            code.value for code in sorted(set(result.error_codes), key=failure_rank.__getitem__)
         ],
     }
 
@@ -384,9 +383,7 @@ def _protocol_from_document(document: object) -> ProtocolResult:
         )
         stages_document = document["stages"]
         technologies_document = document["technologies"]
-        if not isinstance(stages_document, list) or not isinstance(
-            technologies_document, list
-        ):
+        if not isinstance(stages_document, list) or not isinstance(technologies_document, list):
             raise TypeError("protocol result collections must be arrays")
         stages = tuple(
             StageResult(
@@ -469,11 +466,7 @@ def _assert_regular_private_file(path: Path) -> os.stat_result:
         value = path.lstat()
     except FileNotFoundError as error:
         raise ArtifactSafetyError(f"artifact does not exist: {path}") from error
-    if (
-        stat.S_ISLNK(value.st_mode)
-        or not stat.S_ISREG(value.st_mode)
-        or value.st_nlink != 1
-    ):
+    if stat.S_ISLNK(value.st_mode) or not stat.S_ISREG(value.st_mode) or value.st_nlink != 1:
         raise ArtifactSafetyError(f"artifact is not an unaliased regular file: {path}")
     os.chmod(str(path), 0o600)
     return value
@@ -658,9 +651,7 @@ class RunStore:
             except ValueError as error:
                 raise LedgerIntegrityError("ledger schema version is invalid") from error
             if schema_version != LEDGER_SCHEMA_VERSION:
-                raise LedgerIntegrityError(
-                    f"unsupported ledger schema version: {schema_version}"
-                )
+                raise LedgerIntegrityError(f"unsupported ledger schema version: {schema_version}")
             spec = _deserialize_run_spec(metadata["run_spec"])
             if expected_spec is not None:
                 serialized_expected = _serialize_run_spec(expected_spec)
@@ -898,9 +889,7 @@ class RunStore:
 
                 summary = ingest_targets(
                     stream,
-                    lambda occurrence: self._insert_occurrence(
-                        self._connection, occurrence
-                    ),
+                    lambda occurrence: self._insert_occurrence(self._connection, occurrence),
                 )
                 after = os.fstat(stream.fileno())
                 try:
@@ -1158,9 +1147,7 @@ class RunStore:
             try:
                 path_value = source.stat()
             except OSError as error:
-                raise SourceChangedError(
-                    "target source disappeared during verification"
-                ) from error
+                raise SourceChangedError("target source disappeared during verification") from error
             if (
                 not _identity_matches(expected_identity, source, after)
                 or not _identity_matches(expected_identity, source, path_value)
@@ -1183,10 +1170,9 @@ class RunStore:
                     raise SourceChangedError(
                         "target source disappeared during ready commit"
                     ) from error
-                if (
-                    not _identity_matches(expected_identity, source, after_transaction)
-                    or not _identity_matches(expected_identity, source, path_transaction)
-                ):
+                if not _identity_matches(
+                    expected_identity, source, after_transaction
+                ) or not _identity_matches(expected_identity, source, path_transaction):
                     raise SourceChangedError("target source changed before ready commit")
                 self._set_metadata(self._connection, "source_verified", "1")
                 ready = lifecycle.transition(RunStatus.READY)
@@ -1409,9 +1395,7 @@ class RunStore:
                         (status.value, occurrence.sequence),
                     ).rowcount
                     if changed != 1:
-                        raise LedgerIntegrityError(
-                            "occurrence terminalization was not exclusive"
-                        )
+                        raise LedgerIntegrityError("occurrence terminalization was not exclusive")
                     self._insert_outbox(
                         self._connection,
                         occurrence.sequence,
@@ -1487,18 +1471,14 @@ class RunStore:
                 raise CompletionPreconditionError("target source has not been verified")
         elif current_status is RunStatus.EXECUTING and next_status is RunStatus.PROJECTING:
             self._assert_endpoint_completion(connection)
-        elif (
-            current_status is RunStatus.PROJECTING
-            and next_status is RunStatus.PUBLISH_READY
-        ):
+        elif current_status is RunStatus.PROJECTING and next_status is RunStatus.PUBLISH_READY:
             self._assert_endpoint_completion(connection)
             counts = self._counts()
             projection = self.projection_state
             if (
                 projection.next_sequence != counts.occurrences
                 or self._metadata("workers_closed") != "1"
-                or self._metadata("reconciled_revision")
-                != self._metadata("data_revision")
+                or self._metadata("reconciled_revision") != self._metadata("data_revision")
             ):
                 raise CompletionPreconditionError(
                     "projection, workers, and reconciliation must be complete"
@@ -1525,9 +1505,7 @@ class RunStore:
             except (OSError, ArtifactSafetyError) as error:
                 raise CompletionPreconditionError("manifest is missing or unsafe") from error
             if byte_count != int(byte_count_text) or observed_digest != digest:
-                raise CompletionPreconditionError(
-                    "published manifest does not match the ledger"
-                )
+                raise CompletionPreconditionError("published manifest does not match the ledger")
 
     def _assert_endpoint_completion(self, connection: sqlite3.Connection) -> None:
         counts = self._counts()
@@ -1756,9 +1734,7 @@ class RunStore:
         next_state: ProjectionState,
     ) -> None:
         self._ensure_open()
-        if not isinstance(expected, ProjectionState) or not isinstance(
-            next_state, ProjectionState
-        ):
+        if not isinstance(expected, ProjectionState) or not isinstance(next_state, ProjectionState):
             raise TypeError("projection states must be ProjectionState values")
         if (
             next_state.next_sequence < expected.next_sequence
@@ -1792,9 +1768,7 @@ class RunStore:
                     expected_offset != next_state.byte_offset
                     or outbox["prefix_sha256"] != next_state.prefix_sha256
                 ):
-                    raise LedgerIntegrityError(
-                        "projection cursor does not match the outbox prefix"
-                    )
+                    raise LedgerIntegrityError("projection cursor does not match the outbox prefix")
             elif next_state != ProjectionState(0, 0, _EMPTY_SHA256):
                 raise LedgerIntegrityError("empty projection cursor is invalid")
             self._connection.execute(
@@ -1949,9 +1923,7 @@ class GenerationRepository:
 
         for generation in sorted(candidates, key=lambda item: item.name, reverse=True):
             _require_private_directory(generation, create=False)
-            lock_descriptor = _open_generation_lock(
-                generation / RunStore.LOCK_FILENAME
-            )
+            lock_descriptor = _open_generation_lock(generation / RunStore.LOCK_FILENAME)
             try:
                 store = RunStore.open(generation, expected_spec=spec)
             except RunSpecMismatchError:
@@ -1979,9 +1951,7 @@ class GenerationRepository:
                         store.interrupt()
                         store.resume()
                 else:
-                    raise RunStateError(
-                        f"generation cannot be resumed from {status.value}"
-                    )
+                    raise RunStateError(f"generation cannot be resumed from {status.value}")
             except BaseException:
                 store.close()
                 _close_generation_lock(lock_descriptor)

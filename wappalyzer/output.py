@@ -49,9 +49,7 @@ def _open_projection(path: Path) -> Tuple[int, bool]:
                 descriptor = os.open(str(path), flags)
             except OSError as error:
                 if error.errno in {errno.ELOOP, errno.EMLINK}:
-                    raise ArtifactSafetyError(
-                        f"unsafe projection path: {path}"
-                    ) from error
+                    raise ArtifactSafetyError(f"unsafe projection path: {path}") from error
                 raise
         except OSError as error:
             if error.errno in {errno.ELOOP, errno.EMLINK}:
@@ -234,11 +232,7 @@ def _manifest_matches(path: Path, expected: bytes) -> bool:
         value = path.lstat()
     except FileNotFoundError:
         return False
-    if (
-        stat.S_ISLNK(value.st_mode)
-        or not stat.S_ISREG(value.st_mode)
-        or value.st_nlink != 1
-    ):
+    if stat.S_ISLNK(value.st_mode) or not stat.S_ISREG(value.st_mode) or value.st_nlink != 1:
         raise ArtifactExistsError(f"manifest path is occupied by an unsafe artifact: {path}")
     flags = os.O_RDONLY
     if hasattr(os, "O_NOFOLLOW"):
