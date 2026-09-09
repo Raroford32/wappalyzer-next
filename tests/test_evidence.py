@@ -240,3 +240,28 @@ def test_missing_stage_identity_is_partial_multi_observation():
     assert result.observation is ProtocolObservation.MULTI
     assert result.status is ProtocolStatus.PARTIAL
     assert result.technologies == ()
+
+
+def test_empty_stage_identity_does_not_split_evidence_bearing_observation():
+    static = StageEvidence(
+        name=StageName.STATIC,
+        status=StageStatus.SUCCESS_EMPTY,
+        response_identity=identity(),
+    )
+    browser = StageEvidence(
+        name=StageName.BROWSER,
+        status=StageStatus.SUCCESS,
+        response_identity=identity(content=b"different response"),
+        detections=(raw("RuntimeTech", "js", "global-pattern"),),
+    )
+
+    result = merge_stage_evidence(
+        protocol=Protocol.HTTP,
+        requested_url="http://192.0.2.1:8080/",
+        tls=TLSMetadata(present=False, trust=TLSTrust.NOT_APPLICABLE),
+        stages=(static, browser),
+    )
+
+    assert result.observation is ProtocolObservation.SINGLE
+    assert result.status is ProtocolStatus.SUCCESS
+    assert [technology.name for technology in result.technologies] == ["RuntimeTech"]
