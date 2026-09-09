@@ -1,4 +1,3 @@
-import math
 import os
 import resource
 import threading
@@ -243,7 +242,7 @@ def _quota_cpu_count(cpu_max):
         return None
     if quota <= 0 or period <= 0:
         return None
-    return max(1, math.ceil(quota / period))
+    return max(1, quota // period)
 
 
 def _controller_values(value):
@@ -293,22 +292,27 @@ def effective_available_memory(host_available, memory_max, memory_current):
         and not isinstance(host_available, bool)
         and host_available >= 0
     ):
-        candidates.append(host_available)
+        host_reserve = max((host_available + 4) // 5, 512 * MIB)
+        candidates.append(max(0, host_available - host_reserve))
 
     maximum_values = _controller_values(memory_max)
     current_values = _controller_values(memory_current)
+    if len(maximum_values) != len(current_values):
+        return None
     for maximum_value, current_value in zip(maximum_values, current_values):
+        if maximum_value == "max":
+            continue
         limit = _parse_controller_integer(maximum_value)
         current = _parse_controller_integer(current_value)
-        if limit is not None and current is not None:
-            candidates.append(max(0, limit - current))
+        if limit is None or current is None:
+            return None
+        reserve = max((limit + 4) // 5, 512 * MIB)
+        candidates.append(max(0, limit - reserve - current))
 
     if not candidates:
         return None
 
-    effective = min(candidates)
-    reserve = max((effective + 4) // 5, 512 * MIB)
-    return max(0, effective - reserve)
+    return min(candidates)
 
 
 class SystemResourceProbe:
@@ -644,22 +648,6 @@ def capture_snapshot(probe=None, *, artifact_path=None):
     )
 
 
-def _capacity_for(snapshot, request, *, reserve=None):
-    reserve = reserve or ResourceRequest()
-    capacity = None
-    for request_name, snapshot_name in _SNAPSHOT_FIELDS.items():
-        per_worker = getattr(request, request_name)
-        if per_worker == 0:
-            continue
-        available = getattr(snapshot, snapshot_name)
-        if available is None:
-            continue
-        remaining = available - getattr(reserve, request_name)
-        dimension_capacity = max(0, remaining // per_worker)
-        capacity = dimension_capacity if capacity is None else min(capacity, dimension_capacity)
-    return capacity
-
-
 def _insufficient_dimensions(snapshot, request):
     reasons = []
     for request_name, snapshot_name in _SNAPSHOT_FIELDS.items():
@@ -679,11 +667,36 @@ def _insufficient_dimensions(snapshot, request):
     return reasons
 
 
-def _selected_count(requested, snapshot, request, *, reserve=None):
-    if requested == 0:
-        return 0
-    capacity = _capacity_for(snapshot, request, reserve=reserve)
-    return requested if capacity is None else min(requested, capacity)
+def selected_resource_request(counts, profile):
+    if not isinstance(counts, WorkerCounts):
+        raise TypeError("counts must be WorkerCounts")
+    if not isinstance(profile, ResourceProfile):
+        raise TypeError("profile must be a ResourceProfile")
+    request = profile.discovery_worker.scale(counts.discovery)
+    request += profile.static_worker.scale(counts.static)
+    request += profile.browser_active_page.scale(counts.browser)
+    if counts.browser:
+        request += profile.browser_replacement
+    return request
+
+
+def _remaining_capacity(capacity, used):
+    return ResourceRequest(
+        *(
+            max(0, getattr(capacity, name) - getattr(used, name))
+            for name in _RESOURCE_FIELDS
+        )
+    )
+
+
+def _additional_slots(capacity, used, request):
+    remaining = _remaining_capacity(capacity, used)
+    slots = [
+        getattr(remaining, name) // getattr(request, name)
+        for name in _RESOURCE_FIELDS
+        if getattr(request, name)
+    ]
+    return min(slots) if slots else UNBOUNDED_RESOURCE
 
 
 def autosize(
@@ -731,28 +744,44 @@ def autosize(
             insufficiency_reasons=tuple(dict.fromkeys(insufficiency_reasons)),
         )
 
-    selected_browser = _selected_count(
-        requested.browser,
-        snapshot,
-        profile.browser_active_page,
-        reserve=profile.browser_replacement,
-    )
-    if requested.browser and snapshot.memory_bytes is None:
-        selected_browser = min(selected_browser, 1)
-
     selected = WorkerCounts(
-        discovery=_selected_count(
-            requested.discovery,
-            snapshot,
-            profile.discovery_worker,
-        ),
-        static=_selected_count(
-            requested.static,
-            snapshot,
-            profile.static_worker,
-        ),
-        browser=selected_browser,
+        discovery=min(requested.discovery, 1),
+        static=min(requested.static, 1),
+        browser=min(requested.browser, 1),
     )
+    if snapshot.memory_bytes is not None:
+        capacity = snapshot.broker_capacity()
+        for field_name, request in (
+            ("browser", profile.browser_active_page),
+            ("static", profile.static_worker),
+            ("discovery", profile.discovery_worker),
+        ):
+            current = getattr(selected, field_name)
+            desired = getattr(requested, field_name)
+            if current >= desired:
+                continue
+            used = selected_resource_request(selected, profile)
+            additional = min(
+                desired - current,
+                _additional_slots(capacity, used, request),
+            )
+            selected = WorkerCounts(
+                discovery=(
+                    selected.discovery + additional
+                    if field_name == "discovery"
+                    else selected.discovery
+                ),
+                static=(
+                    selected.static + additional
+                    if field_name == "static"
+                    else selected.static
+                ),
+                browser=(
+                    selected.browser + additional
+                    if field_name == "browser"
+                    else selected.browser
+                ),
+            )
     return ResourcePlan(
         snapshot=snapshot,
         profile=profile,
@@ -816,7 +845,7 @@ class ResourceBroker:
     @property
     def available(self):
         with self._condition:
-            return self._capacity - self._in_use
+            return _remaining_capacity(self._capacity, self._in_use)
 
     @property
     def waiting_count(self):
@@ -832,7 +861,13 @@ class ResourceBroker:
     def try_acquire(self, request):
         with self._condition:
             self._validate_request(request)
-            if self._waiters or not request.fits_within(self._capacity - self._in_use):
+            if (
+                self._waiters
+                or not self._in_use.fits_within(self._capacity)
+                or not request.fits_within(
+                    _remaining_capacity(self._capacity, self._in_use)
+                )
+            ):
                 return None
             self._in_use += request
             return ResourceLease(self, request)
@@ -847,8 +882,12 @@ class ResourceBroker:
                     if cancel_event is not None and cancel_event.is_set():
                         raise CancelledError()
                     is_first = self._waiters[0] is waiter
-                    available = self._capacity - self._in_use
-                    if is_first and request.fits_within(available):
+                    available = _remaining_capacity(self._capacity, self._in_use)
+                    if (
+                        is_first
+                        and self._in_use.fits_within(self._capacity)
+                        and request.fits_within(available)
+                    ):
                         self._waiters.pop(0)
                         self._in_use += request
                         self._condition.notify_all()
@@ -871,8 +910,6 @@ class ResourceBroker:
         if not isinstance(capacity, ResourceRequest):
             raise TypeError("capacity must be a ResourceRequest")
         with self._condition:
-            if self._in_use != ResourceRequest() or self._waiters:
-                return False
             self._capacity = capacity
             self._condition.notify_all()
             return True
