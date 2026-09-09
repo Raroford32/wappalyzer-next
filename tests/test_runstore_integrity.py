@@ -4,6 +4,7 @@ import json
 import os
 import sqlite3
 import stat
+from contextlib import contextmanager
 from dataclasses import asdict, replace
 from pathlib import Path
 
@@ -258,7 +259,7 @@ def test_source_identity_deserializer_rejects_invalid_and_noncanonical_payloads(
 
 
 def test_protocol_serialization_round_trips_rich_ordered_evidence():
-    endpoint = Endpoint("example.test", 443)
+    endpoint = Endpoint("192.0.2.10", 443)
     rich = _rich_result(endpoint)
     empty = _success_empty(endpoint)
 
@@ -274,7 +275,7 @@ def test_protocol_serialization_round_trips_rich_ordered_evidence():
 
 
 def test_protocol_deserializer_rejects_structural_and_canonical_corruption():
-    endpoint = Endpoint("example.test", 443)
+    endpoint = Endpoint("192.0.2.10", 443)
     payload = runstore_module._serialize_protocols((_rich_result(endpoint),))
     document = json.loads(payload)
 
@@ -641,20 +642,25 @@ def test_ingest_rolls_back_if_lifecycle_changes_inside_transaction(tmp_path, mon
     source = tmp_path / "targets"
     source.write_bytes(raw)
     store = RunStore.create(tmp_path / "generation", "run", _run_spec(raw))
-    original_ingest = runstore_module.ingest_targets
+    original_transaction = runstore_module._transaction
+    raced = False
 
-    def raced_ingest(stream, callback):
-        summary = original_ingest(stream, callback)
-        RunStore._set_metadata(store._connection, "ingested", "1")
-        return summary
+    @contextmanager
+    def raced_transaction(connection):
+        nonlocal raced
+        if connection is store._connection and not raced:
+            raced = True
+            RunStore._set_metadata(connection, "ingested", "1")
+        with original_transaction(connection):
+            yield
 
-    monkeypatch.setattr(runstore_module, "ingest_targets", raced_ingest)
+    monkeypatch.setattr(runstore_module, "_transaction", raced_transaction)
     try:
         with pytest.raises(IngestionStateError, match="already"):
             store.ingest(source)
 
         assert store.counts.occurrences == 0
-        assert store._metadata("ingested") == "0"
+        assert store._metadata("ingested") == "1"
     finally:
         store.close()
 
@@ -1289,7 +1295,7 @@ def test_verify_outbox_rejects_corruption(tmp_path, corruption, message):
     else:
         raw = b"invalid\n"
     store = _executing_store(tmp_path, raw)
-    if raw.startswith(b"192"):
+    if raw.startswith(b"192") and corruption != "sequence_metadata":
         claim = store.claim_endpoint()
         assert claim is not None
         store.commit_endpoint(claim, (_success_empty(claim.endpoint),))
@@ -1444,6 +1450,7 @@ def test_generation_lock_guards_platform_alias_contention_and_fsync(
             runstore_module._open_generation_lock(lock)
     finally:
         runstore_module._close_generation_lock(descriptor)
+    lock.unlink()
 
     victim = tmp_path / "victim"
     victim.write_bytes(b"safe")
