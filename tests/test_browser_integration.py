@@ -102,7 +102,9 @@ class HonoHandler(BaseHTTPRequestHandler):
                 <script>
                   // matrix-scripts-positive
                   window.matrixRuntime = { value: 'matrix-js-positive' };
-                  fetch('/matrix-xhr-positive');
+                  const matrixRequest = new XMLHttpRequest();
+                  matrixRequest.open('GET', '/matrix-xhr-positive');
+                  matrixRequest.send();
                 </script>
             """,
             "matrix-negative": b"""<!doctype html>
