@@ -53,6 +53,13 @@ def test_missing_runtime_properties_and_sources_do_not_match():
     ) == (False, "", 0)
 
 
+def test_source_rules_support_resource_href_elements():
+    assert match_dom(
+        {"link[href*='cdn.example']": {"src": ""}},
+        soup("<link href='https://cdn.example/style.css'>"),
+    ) == (True, "", 100)
+
+
 def test_empty_text_is_not_runtime_text_evidence():
     assert match_dom(
         {"style#astra-theme": {"text": ""}},

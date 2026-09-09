@@ -125,7 +125,7 @@ def match_element_rule(element, rule):
             aggregate = combine_matches(aggregate, candidate)
 
     if "src" in rule:
-        source = element.get("src", "")
+        source = element.get("src") or element.get("href", "")
 
         if source:
             candidate = (True, "", 100) if rule["src"] == "" else match(rule["src"], source)

@@ -182,14 +182,16 @@ async function getDomDetections(_technologies) {""",
     content = replace_once(
         content,
         """          if (properties) {""",
-        """          if (src && node.src) {
-            const value = node.src
+        """          if (src) {
+            const value = node.src || node.href
 
-            addDetection(name, `${name}|${selector}|src|${value}`, {
-              name,
-              selector,
-              src: value,
-            })
+            if (value) {
+              addDetection(name, `${name}|${selector}|src|${value}`, {
+                name,
+                selector,
+                src: value,
+              })
+            }
           }
 
           if (properties) {""",
