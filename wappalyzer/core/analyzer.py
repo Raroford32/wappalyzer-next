@@ -39,15 +39,6 @@ PATTERN_FIELDS = {
     "xhr",
 }
 DICT_PATTERN_FIELDS = {"cookies", "dns", "headers", "js", "meta"}
-ASSET_WORKERS = max(
-    1,
-    int(
-        os.getenv(
-            "WAPPALYZER_ASSET_WORKERS",
-            str(max(1, os.cpu_count() or 1)),
-        )
-    ),
-)
 ASSET_LIMIT = max(0, int(os.getenv("WAPPALYZER_ASSET_LIMIT", "64")))
 ASSET_DEPTH = max(0, int(os.getenv("WAPPALYZER_ASSET_DEPTH", "2")))
 ASSET_MAX_BYTES = max(
@@ -77,9 +68,13 @@ class ScanRequestError(RuntimeError):
     pass
 
 
-def configure_asset_workers(worker_count):
-    global ASSET_WORKERS
-    ASSET_WORKERS = max(1, worker_count)
+def asset_worker_count(cpu_budget=None):
+    override = os.getenv("WAPPALYZER_ASSET_WORKERS")
+
+    if override:
+        return max(1, int(override))
+
+    return max(1, cpu_budget or os.cpu_count() or 1)
 
 
 def _remaining_seconds(deadline):
@@ -188,14 +183,21 @@ def _fetch_asset(url, timeout, cookie):
     return response.url, response.text
 
 
-def _fetch_assets(urls, timeout, cookie, credential_origin, budget):
+def _fetch_assets(
+    urls,
+    timeout,
+    cookie,
+    credential_origin,
+    budget,
+    asset_workers=None,
+):
     ordered_urls = budget.claim(urls)
 
     if not ordered_urls:
         return {}
 
     responses = {}
-    worker_count = min(len(ordered_urls), ASSET_WORKERS)
+    worker_count = min(len(ordered_urls), asset_worker_count(asset_workers))
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=worker_count) as executor:
         futures = {
@@ -242,7 +244,13 @@ def _stylesheet_urls(base_url, soup):
     return urls
 
 
-def _probe_responses(base_url, timeout, cookie, budget):
+def _probe_responses(
+    base_url,
+    timeout,
+    cookie,
+    budget,
+    asset_workers=None,
+):
     urls = {path: urljoin(base_url, path) for probes in PROBES.values() for path in probes}
     responses = {}
     claimed_urls = set(budget.claim(urls.values()))
@@ -252,7 +260,7 @@ def _probe_responses(base_url, timeout, cookie, budget):
         return responses
 
     with concurrent.futures.ThreadPoolExecutor(
-        max_workers=min(len(urls), ASSET_WORKERS)
+        max_workers=min(len(urls), asset_worker_count(asset_workers))
     ) as executor:
         futures = {
             executor.submit(
@@ -281,9 +289,17 @@ def _probe_responses(base_url, timeout, cookie, budget):
     return responses
 
 
-def collect_evidence(response, scan_type, cookie=None, timeout=30, deadline=None):
+def collect_evidence(
+    response,
+    scan_type,
+    cookie=None,
+    timeout=30,
+    deadline=None,
+    asset_workers=None,
+):
     if deadline is None:
         deadline = time.monotonic() + timeout
+    asset_workers = asset_worker_count(asset_workers)
     soup = BeautifulSoup(response.text, "html.parser")
     r = tldextract.extract(response.url)
     parsed_url = urlparse(response.url)
@@ -324,6 +340,7 @@ def collect_evidence(response, scan_type, cookie=None, timeout=30, deadline=None
                 cookie,
                 response.url,
                 asset_budget,
+                asset_workers,
             )
             fetched_scripts.update((url, batch.get(url, "")) for url in new_urls if url in batch)
             pending_scripts = []
@@ -359,6 +376,7 @@ def collect_evidence(response, scan_type, cookie=None, timeout=30, deadline=None
                     cookie,
                     response.url,
                     asset_budget,
+                    asset_workers,
                 ).values()
             )
 
@@ -389,6 +407,7 @@ def collect_evidence(response, scan_type, cookie=None, timeout=30, deadline=None
                     remaining,
                     cookie,
                     asset_budget,
+                    asset_workers,
                 ): "probes",
             }
 
@@ -463,6 +482,7 @@ def analyze_from_response(
     cookie=None,
     timeout=30,
     deadline=None,
+    asset_workers=None,
 ):
     prepare_matchers()
     evidence = collect_evidence(
@@ -471,6 +491,7 @@ def analyze_from_response(
         cookie=cookie,
         timeout=timeout,
         deadline=deadline,
+        asset_workers=asset_workers,
     )
 
     result = {}
@@ -540,7 +561,13 @@ def analyze_from_response(
     return create_result(result)
 
 
-def http_scan(url, scan_type, cookie=None, timeout=30):
+def http_scan(
+    url,
+    scan_type,
+    cookie=None,
+    timeout=30,
+    asset_workers=None,
+):
     deadline = time.monotonic() + timeout
     response = get_response(url, cookie, timeout=timeout)
     if response is not None:
@@ -550,6 +577,7 @@ def http_scan(url, scan_type, cookie=None, timeout=30):
             cookie=cookie,
             timeout=timeout,
             deadline=deadline,
+            asset_workers=asset_workers,
         )
 
     raise ScanRequestError(f"Unable to fetch {url}")

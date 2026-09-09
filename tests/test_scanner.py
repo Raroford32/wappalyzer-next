@@ -40,6 +40,46 @@ def test_interactive_callers_use_thread_fallback(monkeypatch):
     assert list(result) == ["https://a.test", "https://b.test"]
 
 
+def test_http_executor_has_fixed_capacity_and_is_reused(monkeypatch):
+    monkeypatch.setitem(scanner.sys.modules, "ipykernel", object())
+    monkeypatch.setattr(
+        scanner,
+        "_http_scan_job",
+        lambda url, scan_type, cookie, timeout, asset_workers: (url, {}),
+    )
+
+    with scanner.Wappalyzer(scan_type="fast", workers=4) as instance:
+        instance.analyze_many(["https://a.test", "https://b.test"])
+        executor = instance._http_executor
+        instance.analyze_many(
+            [
+                "https://a.test",
+                "https://b.test",
+                "https://c.test",
+                "https://d.test",
+            ]
+        )
+
+        assert instance._http_executor is executor
+        assert executor._max_workers == 4
+
+
+def test_asset_worker_override_is_passed_without_global_mutation(monkeypatch):
+    seen_asset_workers = []
+
+    def fake_job(url, scan_type, cookie, timeout, asset_workers):
+        seen_asset_workers.append(asset_workers)
+        return url, {}
+
+    monkeypatch.setenv("WAPPALYZER_ASSET_WORKERS", "7")
+    monkeypatch.setattr(scanner, "_http_scan_job", fake_job)
+
+    with scanner.Wappalyzer(scan_type="fast", workers=1) as instance:
+        instance.analyze_many(["https://a.test"])
+
+    assert seen_asset_workers == [7]
+
+
 def test_http_results_and_callbacks_follow_input_order(monkeypatch):
     def fake_job(url, scan_type, cookie, timeout, asset_workers):
         return url, {

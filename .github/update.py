@@ -272,9 +272,6 @@ def main(accept_source_update=False):
                 f"updating EXPECTED_SOURCE_SHA256 (received {source_sha256})"
             )
 
-        if source_sha256 != EXPECTED_SOURCE_SHA256:
-            write_expected_source_sha256(source_sha256)
-
         archive_path.write_bytes(archive_bytes)
 
         with zipfile.ZipFile(archive_path) as archive:
@@ -336,6 +333,9 @@ def main(accept_source_update=False):
             + "\n",
             encoding="utf-8",
         )
+
+        if source_sha256 != EXPECTED_SOURCE_SHA256:
+            write_expected_source_sha256(source_sha256)
 
         for output_path in sorted(output_dir.iterdir()):
             os.replace(output_path, DATA_DIR / output_path.name)

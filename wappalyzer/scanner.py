@@ -13,7 +13,7 @@ from wappalyzer.browser.analyzer import (
     merge_technologies,
     process_url,
 )
-from wappalyzer.core.analyzer import configure_asset_workers, http_scan
+from wappalyzer.core.analyzer import asset_worker_count, http_scan
 from wappalyzer.core.requester import DEFAULT_READ_TIMEOUT
 
 
@@ -91,12 +91,12 @@ def _process_pool_supported():
 
 
 def _http_scan_job(url, scan_type, cookie, timeout, asset_workers):
-    configure_asset_workers(asset_workers)
     return url, http_scan(
         url,
         scan_type,
         cookie=cookie,
         timeout=timeout,
+        asset_workers=asset_workers,
     )
 
 
@@ -271,7 +271,6 @@ class Wappalyzer:
         self._runner = None
         self._full_backend = None
         self._http_executor = None
-        self._http_pool_size = 0
         self._lock = threading.RLock()
 
     def __enter__(self):
@@ -293,7 +292,6 @@ class Wappalyzer:
             self._runner = None
             self._full_backend = None
             self._http_executor = None
-            self._http_pool_size = 0
 
         if runner and backend:
             try:
@@ -368,11 +366,12 @@ class Wappalyzer:
             self.scan_type,
             cookie,
             timeout=self.timeout,
+            asset_workers=asset_worker_count(_available_cpu_count()),
         )
 
     def _analyze_many_http(self, urls, cookie=None, on_result=None, on_error=None):
         worker_count = min(self.workers, len(urls))
-        asset_workers = max(1, _available_cpu_count() // worker_count)
+        asset_workers = asset_worker_count(max(1, _available_cpu_count() // worker_count))
         indexed_results = {}
         indexed_errors = {}
         emitted = set()
@@ -407,21 +406,16 @@ class Wappalyzer:
                 emit(index, url)
         else:
             with self._lock:
-                if self._http_executor and worker_count > self._http_pool_size:
-                    self._http_executor.shutdown(wait=True, cancel_futures=True)
-                    self._http_executor = None
-
                 if not self._http_executor:
                     if _process_pool_supported():
                         self._http_executor = concurrent.futures.ProcessPoolExecutor(
-                            max_workers=worker_count,
+                            max_workers=self.workers,
                             mp_context=multiprocessing.get_context("spawn"),
                         )
                     else:
                         self._http_executor = concurrent.futures.ThreadPoolExecutor(
-                            max_workers=worker_count,
+                            max_workers=self.workers,
                         )
-                    self._http_pool_size = worker_count
 
                 executor = self._http_executor
 
@@ -461,9 +455,9 @@ class Wappalyzer:
 
             if fallback_items:
                 with self._lock:
-                    executor.shutdown(wait=True, cancel_futures=True)
-                    self._http_executor = None
-                    self._http_pool_size = 0
+                    if self._http_executor is executor:
+                        executor.shutdown(wait=True, cancel_futures=True)
+                        self._http_executor = None
 
                 with concurrent.futures.ThreadPoolExecutor(
                     max_workers=min(worker_count, len(fallback_items))
