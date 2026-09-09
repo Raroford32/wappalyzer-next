@@ -255,7 +255,7 @@ def test_expired_url_budget_skips_secondary_requests(monkeypatch):
         raise AssertionError("secondary request exceeded the URL budget")
 
     monkeypatch.setattr(analyzer, "get_dns", forbidden)
-    monkeypatch.setattr(analyzer, "get_robots", forbidden)
+    monkeypatch.setattr(analyzer, "_get_robots_with", forbidden)
     monkeypatch.setattr(analyzer, "get_certIssuer", forbidden)
     monkeypatch.setattr(analyzer, "_probe_responses", forbidden)
 
