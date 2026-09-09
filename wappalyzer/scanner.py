@@ -170,30 +170,32 @@ class _FullScanBackend:
         self.timeout = timeout
         self.strict_tls = strict_tls
         self.pool = None
+        self._pool_lock = asyncio.Lock()
 
     async def ensure_pool(self, size):
-        if self.pool:
-            if size > self.pool.size:
-                await self.pool.grow_to(size)
+        async with self._pool_lock:
+            if self.pool:
+                if size > self.pool.size:
+                    await self.pool.grow_to(size)
 
-            if self.pool.size == 0:
-                raise RuntimeError("No healthy browser driver is available")
+                if self.pool.size == 0:
+                    raise RuntimeError("No healthy browser driver is available")
 
-            return
+                return
 
-        pool = DriverPool(
-            size=size,
-            timeout=self.timeout,
-            strict_tls=self.strict_tls,
-        )
+            pool = DriverPool(
+                size=size,
+                timeout=self.timeout,
+                strict_tls=self.strict_tls,
+            )
 
-        try:
-            await pool.start()
-        except Exception:
-            await pool.cleanup()
-            raise
+            try:
+                await pool.start()
+            except Exception:
+                await pool.cleanup()
+                raise
 
-        self.pool = pool
+            self.pool = pool
 
     async def analyze_url(self, url, cookie=None):
         async def scan():
@@ -211,7 +213,7 @@ class _FullScanBackend:
         return await asyncio.wait_for(scan(), timeout=self.timeout)
 
     async def analyze_evidence(self, url, cookie=None, tls=None):
-        await self.ensure_pool(1)
+        await self.ensure_pool(self.workers)
         async with self.pool.get_driver() as driver:
             if cookie:
                 for cookie_dict in cookie_to_cookies(cookie):

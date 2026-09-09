@@ -2,7 +2,8 @@ import asyncio
 import concurrent.futures
 from typing import Dict
 
-from wappalyzer.discovery import DiscoveryResult, DiscoveryState
+from wappalyzer.core.transport import DirectTransport, EgressPolicy, TransportLimits
+from wappalyzer.discovery import DiscoveryResult, DiscoveryState, discover_protocols
 from wappalyzer.models import (
     PROTOCOL_ORDER,
     Endpoint,
@@ -13,6 +14,15 @@ from wappalyzer.models import (
     TLSMetadata,
     TLSTrust,
 )
+from wappalyzer.resources import (
+    DEFAULT_RESOURCE_PROFILE,
+    ResourceProfile,
+    ResourceSnapshot,
+    WorkerCounts,
+    autosize,
+    capture_snapshot,
+)
+from wappalyzer.scanner import CompleteScanExecutor, _FullScanBackend
 
 
 def _failed_protocol(endpoint, protocol, failure_code=FailureCode.WORKER_FAILURE):
@@ -150,4 +160,97 @@ class ExhaustiveEndpointScanner:
         self.close()
 
 
-__all__ = ["ExhaustiveEndpointScanner"]
+class DirectScanRuntime:
+    def __init__(
+        self,
+        *,
+        workers=None,
+        timeout=30,
+        resource_snapshot=None,
+        resource_profile=None,
+        transport_limits=None,
+    ):
+        if workers is not None and (
+            isinstance(workers, bool) or not isinstance(workers, int) or workers < 1
+        ):
+            raise ValueError("workers must be a positive integer or None")
+        if isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or timeout < 1:
+            raise ValueError("timeout must be at least one second")
+        snapshot = resource_snapshot or capture_snapshot()
+        profile = resource_profile or DEFAULT_RESOURCE_PROFILE
+        if not isinstance(snapshot, ResourceSnapshot):
+            raise TypeError("resource_snapshot must be a ResourceSnapshot or None")
+        if not isinstance(profile, ResourceProfile):
+            raise TypeError("resource_profile must be a ResourceProfile or None")
+        requested = WorkerCounts(workers, workers, workers) if workers is not None else None
+        plan = autosize(snapshot, profile, requested=requested)
+        if (
+            not plan.can_run
+            or plan.selected.discovery < 1
+            or plan.selected.static < 1
+            or plan.selected.browser < 1
+        ):
+            reasons = ", ".join(plan.insufficiency_reasons) or "complete worker capacity"
+            raise RuntimeError(f"insufficient resources: {reasons}")
+        if transport_limits is not None and not isinstance(
+            transport_limits,
+            TransportLimits,
+        ):
+            raise TypeError("transport_limits must be TransportLimits or None")
+
+        self.resource_plan = plan
+        self.transport_limits = transport_limits or TransportLimits()
+        self.browser_backend = _FullScanBackend(
+            workers=plan.selected.browser,
+            timeout=timeout,
+            strict_tls=True,
+        )
+        self.complete_executor = CompleteScanExecutor(
+            browser_runner=self.browser_backend.analyze_evidence,
+            timeout=timeout,
+            static_workers=plan.selected.static,
+            asset_workers=1,
+        )
+        self.endpoint_scanner = ExhaustiveEndpointScanner(
+            discovery_runner=self._discover,
+            complete_runner=self._complete,
+            discovery_workers=plan.selected.discovery,
+        )
+        self.max_inflight = sum(
+            (
+                plan.selected.discovery,
+                plan.selected.static,
+                plan.selected.browser,
+            )
+        )
+        self._closed = False
+
+    def _discover(self, endpoint):
+        with DirectTransport(
+            policy=EgressPolicy((endpoint,)),
+            limits=self.transport_limits,
+        ) as transport:
+            return discover_protocols(endpoint, transport)
+
+    async def _complete(self, discovery):
+        return await self.complete_executor.analyze_protocol(
+            discovery.requested_url,
+            discovery.protocol,
+            discovery.tls,
+        )
+
+    async def scan(self, endpoint):
+        if self._closed:
+            raise RuntimeError("direct scan runtime is closed")
+        return await self.endpoint_scanner.scan(endpoint)
+
+    async def aclose(self):
+        if self._closed:
+            return
+        self._closed = True
+        self.endpoint_scanner.close()
+        self.complete_executor.close()
+        await self.browser_backend.close()
+
+
+__all__ = ["DirectScanRuntime", "ExhaustiveEndpointScanner"]

@@ -565,6 +565,15 @@ class DirectTransport:
         finally:
             _close_response(response)
 
+    def close(self) -> None:
+        _close_response(self._session)
+
+    def __enter__(self) -> "DirectTransport":
+        return self
+
+    def __exit__(self, exc_type: object, exc: object, traceback: object) -> None:
+        self.close()
+
 
 __all__ = [
     "DestinationBlocked",
