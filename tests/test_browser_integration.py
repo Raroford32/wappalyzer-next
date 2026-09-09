@@ -49,6 +49,11 @@ def build_matrix_extension(tmp_path):
     for name in tuple(members):
         if name.startswith("technologies/") and name.endswith(".json"):
             members[name] = b"{}"
+    members["js/index.js"] = members["js/index.js"].replace(
+        b"|localhost|",
+        b"|matrix-localhost-disabled|",
+        1,
+    )
     members["technologies/m.json"] = json.dumps(
         matrix_technologies(),
         separators=(",", ":"),
