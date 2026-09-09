@@ -22,6 +22,10 @@ from wappalyzer.core.matcher import (
 from wappalyzer.core.regex_workers import RegexTimeoutError, RegexWorkerError
 from wappalyzer.core.requester import get_response
 from wappalyzer.evidence import RawDetection, StageEvidence, resolve_raw_detections
+from wappalyzer.evidence_limits import (
+    COMPLETE_PROBE_COUNT_LIMIT,
+    COMPLETE_PROBE_ITEM_BYTES_LIMIT,
+)
 from wappalyzer.models import (
     CHANNEL_REGISTRY,
     ChannelOwner,
@@ -260,6 +264,7 @@ def _probe_responses(
     cookie,
     budget,
     asset_workers=None,
+    max_bytes=ASSET_MAX_BYTES,
 ):
     urls = {path: urljoin(base_url, path) for probes in PROBES.values() for path in probes}
     responses = {}
@@ -278,7 +283,7 @@ def _probe_responses(
                 url,
                 cookie,
                 timeout=timeout,
-                max_bytes=ASSET_MAX_BYTES,
+                max_bytes=max_bytes,
             ): path
             for path, url in urls.items()
         }
@@ -316,7 +321,9 @@ def collect_evidence(
     domain = ".".join(part for part in (r.domain, r.suffix) if part)
     base_url = f"{parsed_url.scheme}://{parsed_url.netloc}"
     scripts = []
-    asset_budget = AssetBudget(ASSET_LIMIT)
+    asset_budget = AssetBudget(
+        COMPLETE_PROBE_COUNT_LIMIT if scan_type == "complete" else ASSET_LIMIT
+    )
 
     for script in soup.find_all("script"):
         if not script.get("src"):
@@ -394,6 +401,7 @@ def collect_evidence(
                     cookie,
                     asset_budget,
                     nested_workers,
+                    COMPLETE_PROBE_ITEM_BYTES_LIMIT if scan_type == "complete" else ASSET_MAX_BYTES,
                 ): "probes",
             }
 

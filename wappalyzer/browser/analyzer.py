@@ -19,6 +19,14 @@ from wappalyzer.core.matcher import better_version
 from wappalyzer.core.requester import VERIFY_TLS
 from wappalyzer.core.utils import enrich_result
 from wappalyzer.evidence import RawDetection, StageEvidence
+from wappalyzer.evidence_limits import (
+    BROWSER_DOM_DETECTIONS_PER_TECH_LIMIT,
+    BROWSER_DOM_TEXT_CHARACTER_LIMIT,
+    BROWSER_HTML_CHARACTER_LIMIT,
+    BROWSER_INLINE_SCRIPT_CHARACTER_LIMIT,
+    BROWSER_INLINE_SCRIPT_COUNT_LIMIT,
+    BROWSER_TEXT_CHARACTER_LIMIT,
+)
 from wappalyzer.models import (
     CHANNEL_REGISTRY,
     ChannelOwner,
@@ -274,6 +282,26 @@ PAGE_ACTIVITY_SCRIPT = """
       ? now - window.__wappalyzerLastMutationAt
       : null,
     mutationCount: window.__wappalyzerMutationCount || 0,
+  }
+}
+"""
+
+EVIDENCE_METRICS_SCRIPT = """
+() => {
+  const root = document.documentElement
+  const body = document.body
+  const inlineScripts = Array.from(document.querySelectorAll('script:not([src])'))
+    .map((script) => (script.textContent || '').trim())
+    .filter(Boolean)
+
+  return {
+    htmlCharacters: root?.outerHTML?.length || 0,
+    textCharacters: body?.innerText?.length || 0,
+    inlineScriptCount: inlineScripts.length,
+    inlineScriptCharacters: inlineScripts.reduce(
+      (total, script) => total + script.length,
+      0
+    ),
   }
 }
 """
@@ -947,6 +975,32 @@ async def _clear_target_state(driver, page):
         raise RuntimeError("Target cleanup failed: " + "; ".join(failures))
 
 
+async def _get_evidence_metrics(page):
+    try:
+        metrics = await asyncio.wait_for(
+            page.evaluate(EVIDENCE_METRICS_SCRIPT),
+            timeout=2,
+        )
+    except Exception:
+        return None
+    if not isinstance(metrics, dict):
+        return None
+    names = (
+        "htmlCharacters",
+        "textCharacters",
+        "inlineScriptCount",
+        "inlineScriptCharacters",
+    )
+    if any(
+        isinstance(metrics.get(name), bool)
+        or not isinstance(metrics.get(name), (int, float))
+        or metrics[name] < 0
+        for name in names
+    ):
+        return None
+    return {name: int(metrics[name]) for name in names}
+
+
 async def _process_page(driver, url, *, raw):
     page = await driver.context.new_page()
     driver.page = page
@@ -976,7 +1030,9 @@ async def _process_page(driver, url, *, raw):
             else await _get_detections(driver, page.url)
         )
         content = b""
+        evidence_metrics = None
         if raw:
+            evidence_metrics = await _get_evidence_metrics(page)
             body = getattr(response, "body", None)
             if callable(body):
                 try:
@@ -991,6 +1047,7 @@ async def _process_page(driver, url, *, raw):
             response.status if response is not None else None,
             content,
             navigation_timed_out,
+            evidence_metrics,
         )
     finally:
         cleanup_failures = []
@@ -1017,7 +1074,7 @@ async def _process_page(driver, url, *, raw):
 
 
 async def process_url(driver, url):
-    detections, _effective_url, _status, _content, _timed_out = await _process_page(
+    detections, _effective_url, _status, _content, _timed_out, _metrics = await _process_page(
         driver,
         url,
         raw=False,
@@ -1025,25 +1082,61 @@ async def process_url(driver, url):
     return url, detections
 
 
+def browser_evidence_truncations(detections, metrics, timed_out):
+    limits_by_channel = {}
+
+    def add(channel, limit):
+        limits_by_channel.setdefault(channel, set()).add(limit)
+
+    if timed_out:
+        for channel, registration in CHANNEL_REGISTRY.items():
+            if registration.owner is ChannelOwner.BROWSER:
+                add(channel, EvidenceLimit.TIMER)
+
+    limited_channels = ("dom", "html", "scripts", "text")
+    if metrics is None:
+        for channel in limited_channels:
+            add(channel, EvidenceLimit.WORKER)
+    else:
+        if metrics["htmlCharacters"] > BROWSER_HTML_CHARACTER_LIMIT:
+            add("html", EvidenceLimit.BYTES)
+        if metrics["textCharacters"] > BROWSER_TEXT_CHARACTER_LIMIT:
+            add("text", EvidenceLimit.BYTES)
+        if metrics["textCharacters"] > BROWSER_DOM_TEXT_CHARACTER_LIMIT:
+            add("dom", EvidenceLimit.BYTES)
+        if metrics["inlineScriptCount"] > BROWSER_INLINE_SCRIPT_COUNT_LIMIT:
+            add("scripts", EvidenceLimit.COUNT)
+        if metrics["inlineScriptCharacters"] > BROWSER_INLINE_SCRIPT_CHARACTER_LIMIT:
+            add("scripts", EvidenceLimit.BYTES)
+
+    dom_counts = {}
+    for detection in detections:
+        technology = detection.get("technology")
+        pattern_type = (detection.get("pattern") or {}).get("type", "")
+        if technology and pattern_type.split(".", 1)[0] == "dom":
+            dom_counts[technology] = dom_counts.get(technology, 0) + 1
+    if any(count >= BROWSER_DOM_DETECTIONS_PER_TECH_LIMIT for count in dom_counts.values()):
+        add("dom", EvidenceLimit.COUNT)
+
+    limit_order = {limit: index for index, limit in enumerate(EvidenceLimit)}
+    return tuple(
+        EvidenceTruncation(
+            channel=channel,
+            limits=tuple(sorted(limits_by_channel[channel], key=lambda item: limit_order[item])),
+        )
+        for channel in CHANNEL_REGISTRY
+        if channel in limits_by_channel
+    )
+
+
 async def process_url_evidence(driver, url):
-    detections, effective_url, http_status, content, timed_out = await _process_page(
+    detections, effective_url, http_status, content, timed_out, metrics = await _process_page(
         driver,
         url,
         raw=True,
     )
     raw = raw_browser_detections(detections)
-    truncations = (
-        tuple(
-            EvidenceTruncation(
-                channel=channel,
-                limits=(EvidenceLimit.TIMER,),
-            )
-            for channel, registration in CHANNEL_REGISTRY.items()
-            if registration.owner is ChannelOwner.BROWSER
-        )
-        if timed_out
-        else ()
-    )
+    truncations = browser_evidence_truncations(detections, metrics, timed_out)
     status = (
         StageStatus.PARTIAL
         if truncations
