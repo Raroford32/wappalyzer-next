@@ -1052,11 +1052,7 @@ def raw_browser_detections(detections):
         pattern = detection.get("pattern") or {}
         channel = pattern.get("type", "").split(".", 1)[0]
         registration = CHANNEL_REGISTRY.get(channel)
-        if (
-            not technology
-            or registration is None
-            or registration.owner is not ChannelOwner.BROWSER
-        ):
+        if not technology or registration is None or registration.owner is not ChannelOwner.BROWSER:
             continue
         confidence = pattern.get("confidence", detection.get("confidence", 100))
         if isinstance(confidence, bool):
