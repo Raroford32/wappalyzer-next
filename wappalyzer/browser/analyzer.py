@@ -975,7 +975,16 @@ async def _process_page(driver, url, *, raw):
             if raw
             else await _get_detections(driver, page.url)
         )
-        content = await page.content() if raw else ""
+        content = b""
+        if raw:
+            body = getattr(response, "body", None)
+            if callable(body):
+                try:
+                    content = await body()
+                except Exception:
+                    content = b""
+            if not content:
+                content = (await page.content()).encode("utf-8")
         return (
             detections,
             page.url,
@@ -1046,7 +1055,7 @@ async def process_url_evidence(driver, url):
         ResponseIdentity(
             effective_url=effective_url,
             http_status=http_status,
-            content_sha256=hashlib.sha256(content.encode("utf-8")).hexdigest(),
+            content_sha256=hashlib.sha256(content).hexdigest(),
         )
         if http_status is not None
         else None

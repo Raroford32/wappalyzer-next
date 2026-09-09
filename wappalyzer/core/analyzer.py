@@ -324,7 +324,7 @@ def collect_evidence(
     script_sources = get_scriptSrc(response.url, soup)
     css_sources = get_css(soup)
 
-    if scan_type != "fast":
+    if scan_type not in {"fast", "complete"}:
         remaining = _remaining_seconds(deadline)
 
         if script_sources:
@@ -587,7 +587,7 @@ def collect_raw_detections(evidence, owner=None):
 
 def analyze_static_stage(
     response,
-    scan_type="balanced",
+    scan_type="complete",
     cookie=None,
     timeout=30,
     deadline=None,
