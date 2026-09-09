@@ -644,6 +644,9 @@ class CanonicalRecord:
 _PROTOCOL_RANK = {protocol: index for index, protocol in enumerate(PROTOCOL_ORDER)}
 _STAGE_RANK = {stage: index for index, stage in enumerate(StageName)}
 _FAILURE_RANK = {code: index for index, code in enumerate(FailureCode)}
+_EVIDENCE_LIMIT_RANK = {
+    limit: index for index, limit in enumerate(EvidenceLimit)
+}
 
 
 def _ordered_errors(error_codes: Sequence[FailureCode]) -> list:
@@ -665,6 +668,44 @@ def _stage_document(stage: StageResult) -> dict:
         "name": stage.name.value,
         "status": stage.status.value,
         "error_codes": _ordered_errors(stage.error_codes),
+        "response_identity": (
+            {
+                "effective_url": stage.response_identity.effective_url,
+                "http_status": stage.response_identity.http_status,
+                "content_sha256": stage.response_identity.content_sha256,
+            }
+            if stage.response_identity is not None
+            else None
+        ),
+        "technologies": [
+            _technology_document(technology)
+            for technology in sorted(
+                stage.technologies,
+                key=lambda item: (
+                    item.name,
+                    item.version,
+                    item.confidence,
+                    item.categories,
+                    item.groups,
+                ),
+            )
+        ],
+        "truncations": [
+            {
+                "channel": truncation.channel,
+                "limits": [
+                    limit.value
+                    for limit in sorted(
+                        truncation.limits,
+                        key=lambda item: _EVIDENCE_LIMIT_RANK[item],
+                    )
+                ],
+            }
+            for truncation in sorted(
+                stage.truncations,
+                key=lambda item: item.channel,
+            )
+        ],
     }
 
 
@@ -686,6 +727,7 @@ def _protocol_document(result: ProtocolResult) -> dict:
         "effective_url": result.effective_url,
         "http_status": result.http_status,
         "tls": _tls_document(result.tls),
+        "observation": result.observation.value,
         "stages": [
             _stage_document(stage)
             for stage in sorted(result.stages, key=lambda item: _STAGE_RANK[item.name])

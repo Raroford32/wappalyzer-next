@@ -21,12 +21,15 @@ from wappalyzer.models import (
     CanonicalRecord,
     ClaimToken,
     Endpoint,
+    EvidenceLimit,
+    EvidenceTruncation,
     EventKind,
     Failure,
     FailureCode,
     FailureDisposition,
     OccurrenceStatus,
     Protocol,
+    ProtocolObservation,
     ProtocolResult,
     ProtocolStatus,
     RunEvent,
@@ -39,6 +42,7 @@ from wappalyzer.models import (
     StaleClaimError,
     TargetOccurrence,
     Technology,
+    ResponseIdentity,
     TLSMetadata,
     TLSTrust,
     aggregate_occurrence_status,
@@ -326,6 +330,19 @@ def _identity_matches(
 def _protocol_document(result: ProtocolResult) -> Dict[str, object]:
     failure_rank = {code: index for index, code in enumerate(FailureCode)}
     stage_rank = {stage: index for index, stage in enumerate(StageName)}
+    evidence_limit_rank = {
+        limit: index for index, limit in enumerate(EvidenceLimit)
+    }
+
+    def technology_document(technology):
+        return {
+            "name": technology.name,
+            "version": technology.version,
+            "confidence": technology.confidence,
+            "categories": sorted(set(technology.categories)),
+            "groups": sorted(set(technology.groups)),
+        }
+
     return {
         "protocol": result.protocol.value,
         "status": result.status.value,
@@ -337,6 +354,7 @@ def _protocol_document(result: ProtocolResult) -> Dict[str, object]:
             "trust": result.tls.trust.value,
             "certificate_sha256": result.tls.certificate_sha256,
         },
+        "observation": result.observation.value,
         "stages": [
             {
                 "name": stage.name.value,
@@ -345,17 +363,49 @@ def _protocol_document(result: ProtocolResult) -> Dict[str, object]:
                     code.value
                     for code in sorted(set(stage.error_codes), key=failure_rank.__getitem__)
                 ],
+                "response_identity": (
+                    {
+                        "effective_url": stage.response_identity.effective_url,
+                        "http_status": stage.response_identity.http_status,
+                        "content_sha256": stage.response_identity.content_sha256,
+                    }
+                    if stage.response_identity is not None
+                    else None
+                ),
+                "technologies": [
+                    technology_document(technology)
+                    for technology in sorted(
+                        stage.technologies,
+                        key=lambda item: (
+                            item.name,
+                            item.version,
+                            item.confidence,
+                            item.categories,
+                            item.groups,
+                        ),
+                    )
+                ],
+                "truncations": [
+                    {
+                        "channel": truncation.channel,
+                        "limits": [
+                            limit.value
+                            for limit in sorted(
+                                truncation.limits,
+                                key=evidence_limit_rank.__getitem__,
+                            )
+                        ],
+                    }
+                    for truncation in sorted(
+                        stage.truncations,
+                        key=lambda item: item.channel,
+                    )
+                ],
             }
             for stage in sorted(result.stages, key=lambda item: stage_rank[item.name])
         ],
         "technologies": [
-            {
-                "name": technology.name,
-                "version": technology.version,
-                "confidence": technology.confidence,
-                "categories": sorted(set(technology.categories)),
-                "groups": sorted(set(technology.groups)),
-            }
+            technology_document(technology)
             for technology in sorted(
                 result.technologies,
                 key=lambda item: (
@@ -389,14 +439,52 @@ def _protocol_from_document(document: object) -> ProtocolResult:
         technologies_document = document["technologies"]
         if not isinstance(stages_document, list) or not isinstance(technologies_document, list):
             raise TypeError("protocol result collections must be arrays")
-        stages = tuple(
-            StageResult(
-                name=StageName(stage["name"]),
-                status=StageStatus(stage["status"]),
-                error_codes=tuple(FailureCode(code) for code in stage["error_codes"]),
+
+        def technology_from_document(technology):
+            return Technology(
+                name=technology["name"],
+                version=technology["version"],
+                confidence=technology["confidence"],
+                categories=tuple(technology["categories"]),
+                groups=tuple(technology["groups"]),
             )
-            for stage in stages_document
-        )
+
+        stages = []
+        for stage in stages_document:
+            identity_document = stage.get("response_identity")
+            identity = (
+                ResponseIdentity(
+                    effective_url=identity_document["effective_url"],
+                    http_status=identity_document["http_status"],
+                    content_sha256=identity_document["content_sha256"],
+                )
+                if identity_document is not None
+                else None
+            )
+            stages.append(
+                StageResult(
+                    name=StageName(stage["name"]),
+                    status=StageStatus(stage["status"]),
+                    error_codes=tuple(
+                        FailureCode(code) for code in stage["error_codes"]
+                    ),
+                    response_identity=identity,
+                    technologies=tuple(
+                        technology_from_document(technology)
+                        for technology in stage.get("technologies", ())
+                    ),
+                    truncations=tuple(
+                        EvidenceTruncation(
+                            channel=truncation["channel"],
+                            limits=tuple(
+                                EvidenceLimit(limit)
+                                for limit in truncation["limits"]
+                            ),
+                        )
+                        for truncation in stage.get("truncations", ())
+                    ),
+                )
+            )
         technologies = tuple(
             Technology(
                 name=technology["name"],
@@ -414,7 +502,10 @@ def _protocol_from_document(document: object) -> ProtocolResult:
             effective_url=document["effective_url"],
             http_status=document["http_status"],
             tls=tls,
-            stages=stages,
+            observation=ProtocolObservation(
+                document.get("observation", "single_observation")
+            ),
+            stages=tuple(stages),
             technologies=technologies,
             error_codes=tuple(FailureCode(code) for code in document["error_codes"]),
         )

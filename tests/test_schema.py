@@ -132,11 +132,27 @@ def valid_document():
                 "effective_url": "http://192.0.2.10:8443/",
                 "http_status": 200,
                 "tls": {"present": False, "trust": "not_applicable"},
+                "observation": "single_observation",
                 "stages": [
                     {
                         "name": "static",
                         "status": "success",
                         "error_codes": [],
+                        "response_identity": {
+                            "effective_url": "http://192.0.2.10:8443/",
+                            "http_status": 200,
+                            "content_sha256": "c" * 64,
+                        },
+                        "technologies": [
+                            {
+                                "name": "Example",
+                                "version": "1",
+                                "confidence": 100,
+                                "categories": ["Web frameworks"],
+                                "groups": ["Core"],
+                            }
+                        ],
+                        "truncations": [],
                     }
                 ],
                 "technologies": [
@@ -161,11 +177,19 @@ def valid_document():
                     "trust": "untrusted",
                     "certificate_sha256": "b" * 64,
                 },
+                "observation": "single_observation",
                 "stages": [
                     {
                         "name": "browser",
                         "status": "success_empty",
                         "error_codes": [],
+                        "response_identity": {
+                            "effective_url": "https://192.0.2.10:8443/",
+                            "http_status": 204,
+                            "content_sha256": "d" * 64,
+                        },
+                        "technologies": [],
+                        "truncations": [],
                     }
                 ],
                 "technologies": [],
