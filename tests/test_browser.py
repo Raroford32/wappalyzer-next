@@ -8,7 +8,10 @@ from wappalyzer.models import ChannelOwner
 
 
 def test_extension_bridge_requests_raw_channel_tagged_detections():
-    assert "func: 'getRawDetectionsForTab'" in analyzer.GET_DETECTIONS_FOR_TAB_SCRIPT
+    assert (
+        "func: raw ? 'getRawDetectionsForTab' : 'getDetectionsForTab'"
+        in analyzer.GET_DETECTIONS_FOR_TAB_SCRIPT
+    )
     assert "type: pattern.type" in analyzer.GET_DETECTIONS_FOR_TAB_SCRIPT
     assert "match: pattern.match" in analyzer.GET_DETECTIONS_FOR_TAB_SCRIPT
 

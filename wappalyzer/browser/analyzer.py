@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import json
 import logging
 import os
@@ -17,6 +18,8 @@ from wappalyzer.core.config import extension_path
 from wappalyzer.core.matcher import better_version
 from wappalyzer.core.requester import VERIFY_TLS
 from wappalyzer.core.utils import enrich_result
+from wappalyzer.evidence import RawDetection
+from wappalyzer.models import CHANNEL_REGISTRY, ChannelOwner
 
 logger = logging.getLogger(__name__)
 
@@ -95,7 +98,7 @@ async ({ targetUrl, timeoutMs }) => {
 """
 
 GET_DETECTIONS_FOR_TAB_SCRIPT = """
-async ({ selectedTab, timeoutMs }) => {
+async ({ selectedTab, timeoutMs, raw }) => {
   const sendMessage = (message) => {
     if (typeof browser !== 'undefined' && browser.runtime?.sendMessage) {
       return browser.runtime
@@ -132,10 +135,12 @@ async ({ selectedTab, timeoutMs }) => {
     return {
       technology: technologyName,
       pattern: {
+        type: pattern.type ? String(pattern.type) : '',
         regex: pattern.regex
           ? String(pattern.regex.source || pattern.regex)
           : '',
         confidence: Number.isFinite(confidence) ? confidence : 100,
+        match: pattern.match ? String(pattern.match) : '',
       },
       version: detection.version || '',
       rootPath: detection.rootPath || '',
@@ -175,7 +180,7 @@ async ({ selectedTab, timeoutMs }) => {
   const response = await Promise.race([
     sendMessage({
       source: 'popup.js',
-      func: 'getDetectionsForTab',
+      func: raw ? 'getRawDetectionsForTab' : 'getDetectionsForTab',
       args: [{ id: currentTab.id, url: currentTab.url }],
     }),
     new Promise((resolve) =>
@@ -790,7 +795,7 @@ async def _page_activity(page):
         return {"unavailable": True}
 
 
-async def _get_detections(driver, target_url):
+async def _get_detections(driver, target_url, raw=False):
     popup = await _ensure_popup(driver)
     extension_timeout_ms = max(1_000, min(driver.timeout_ms, 15_000))
     selected_tab = await popup.evaluate(
@@ -822,6 +827,7 @@ async def _get_detections(driver, target_url):
             {
                 "selectedTab": selected_tab,
                 "timeoutMs": extension_timeout_ms,
+                "raw": raw,
             },
         )
 
@@ -1026,3 +1032,66 @@ def merge_technologies(detections):
             )
 
     return enrich_result(tech_map)
+
+
+def _browser_detection_digest(value):
+    return hashlib.sha256(
+        json.dumps(
+            value,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+
+
+def raw_browser_detections(detections):
+    raw = []
+    for detection in detections:
+        technology = detection.get("technology")
+        pattern = detection.get("pattern") or {}
+        channel = pattern.get("type", "").split(".", 1)[0]
+        registration = CHANNEL_REGISTRY.get(channel)
+        if (
+            not technology
+            or registration is None
+            or registration.owner is not ChannelOwner.BROWSER
+        ):
+            continue
+        confidence = pattern.get("confidence", detection.get("confidence", 100))
+        if isinstance(confidence, bool):
+            continue
+        try:
+            confidence = max(0, min(int(confidence), 100))
+        except (TypeError, ValueError):
+            continue
+        source = {
+            "channel": channel,
+            "confidence": confidence,
+            "regex": pattern.get("regex", ""),
+        }
+        evidence = {
+            "lastUrl": detection.get("lastUrl", ""),
+            "match": pattern.get("match", ""),
+        }
+        raw.append(
+            RawDetection(
+                technology=technology,
+                channel=channel,
+                source_key=_browser_detection_digest(source),
+                evidence_sha256=_browser_detection_digest(evidence),
+                version=detection.get("version", ""),
+                confidence=confidence,
+            )
+        )
+    return tuple(
+        sorted(
+            raw,
+            key=lambda item: (
+                item.technology,
+                item.channel,
+                item.source_key,
+                item.evidence_sha256,
+            ),
+        )
+    )

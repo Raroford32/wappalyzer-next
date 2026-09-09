@@ -78,6 +78,40 @@ def replace_once(content, old, new, description):
     return content.replace(old, new, 1)
 
 
+def patch_raw_tab_detections(content):
+    return replace_once(
+        content,
+        """  async getDetectionsForTab(tab) {""",
+        """  async getRawDetectionsForTab(tab) {
+    const { id: tabId, url } = tab || {}
+
+    if (!url || !/^https?:/i.test(url)) {
+      return []
+    }
+
+    const tabResult = Driver.getTabResult(tabId, url, true)
+
+    return (tabResult?.detections || [])
+      .filter(({ lastUrl }) => !lastUrl || isSimilarUrl(url, lastUrl))
+      .map(({ technology, pattern = {}, version, rootPath, lastUrl }) => ({
+        technology: technology?.name,
+        pattern: {
+          type: pattern.type,
+          regex: pattern.regex?.source || '',
+          confidence: pattern.confidence,
+          match: pattern.match,
+        },
+        version,
+        rootPath,
+        lastUrl,
+      }))
+  },
+
+  async getDetectionsForTab(tab) {""",
+        "raw tab detections",
+    )
+
+
 def patch_index_js(content):
     content = PROMPT_BLOCK.sub("", content, count=1)
     content, replacements = INIT_BLOCK.subn(SCANNER_INIT, content, count=1)
@@ -109,6 +143,7 @@ def patch_index_js(content):
             if (typeof property !== 'undefined') {""",
         "DOM src result analysis",
     )
+    content = patch_raw_tab_detections(content)
 
     return content
 
