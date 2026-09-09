@@ -57,7 +57,7 @@ const Driver = {
   analyzeDom() {
     const result = ({ name, selector, exists, text, property, attribute, value }, index)
 
-    if (typeof property !== 'undefined') {
+            if (typeof property !== 'undefined') {
       return result
     }
   },

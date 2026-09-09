@@ -33,6 +33,7 @@ class FakeDriver:
         self.context = FakeContext()
         self.page = None
         self.timeout_ms = 1_000
+        self.extension_id = "example"
 
     async def apply_pending_cookies(self, url):
         return None
