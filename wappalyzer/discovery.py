@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from enum import Enum
 from typing import Optional, Tuple
 
 from wappalyzer.core.transport import (
@@ -9,11 +8,14 @@ from wappalyzer.core.transport import (
     TransportResult,
     TransportState,
 )
-from wappalyzer.models import Endpoint, FailureCode, Protocol, TLSMetadata, TLSTrust
-
-
-class StringEnum(str, Enum):
-    """A string enum that works on every supported Python version."""
+from wappalyzer.models import (
+    Endpoint,
+    FailureCode,
+    Protocol,
+    StringEnum,
+    TLSMetadata,
+    TLSTrust,
+)
 
 
 class DiscoveryState(StringEnum):

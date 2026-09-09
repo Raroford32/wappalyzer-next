@@ -9,7 +9,7 @@ import uuid
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, fields
 from pathlib import Path
-from typing import Any, Dict, Iterator, Optional, Sequence, Tuple
+from typing import Any, BinaryIO, Dict, Iterator, Optional, Sequence, Tuple
 
 try:
     import fcntl
@@ -25,6 +25,7 @@ from wappalyzer.models import (
     FailureCode,
     FailureDisposition,
     OccurrenceStatus,
+    PROTOCOL_ORDER,
     Protocol,
     ProtocolResult,
     ProtocolStatus,
@@ -51,7 +52,8 @@ _EMPTY_SHA256 = hashlib.sha256(b"").hexdigest()
 _SQLITE_TIMEOUT_SECONDS = 5.0
 _BUSY_TIMEOUT_MILLISECONDS = 5000
 _WAL_AUTOCHECKPOINT_PAGES = 1000
-_PROTOCOL_RANK = {protocol: index for index, protocol in enumerate(Protocol)}
+_HASH_CHUNK_BYTES = 64 * 1024
+_PROTOCOL_RANK = {protocol: index for index, protocol in enumerate(PROTOCOL_ORDER)}
 
 _SCHEMA = """
 CREATE TABLE metadata (
@@ -72,6 +74,8 @@ CREATE TABLE endpoint_work (
         OR (state <> 'claimed' AND claim_epoch IS NULL)
     )
 );
+
+CREATE INDEX endpoint_work_state_endpoint_id ON endpoint_work(state, endpoint_id);
 
 CREATE TABLE occurrences (
     sequence INTEGER PRIMARY KEY CHECK (sequence >= 0),
@@ -472,6 +476,18 @@ def _assert_regular_private_file(path: Path) -> os.stat_result:
     return value
 
 
+def _stream_sha256(stream: BinaryIO) -> Tuple[int, str]:
+    hasher = hashlib.sha256()
+    byte_count = 0
+    while True:
+        chunk = stream.read(_HASH_CHUNK_BYTES)
+        if not chunk:
+            break
+        byte_count += len(chunk)
+        hasher.update(chunk)
+    return byte_count, hasher.hexdigest()
+
+
 def _create_private_file(path: Path) -> None:
     flags = os.O_RDWR | os.O_CREAT | os.O_EXCL
     if hasattr(os, "O_NOFOLLOW"):
@@ -495,23 +511,15 @@ def _create_private_file(path: Path) -> None:
 
 def _file_sha256(path: Path) -> Tuple[int, str]:
     _assert_regular_private_file(path)
-    hasher = hashlib.sha256()
-    byte_count = 0
     flags = os.O_RDONLY
     if hasattr(os, "O_NOFOLLOW"):
         flags |= os.O_NOFOLLOW
     descriptor = os.open(str(path), flags)
     try:
         with os.fdopen(descriptor, "rb", closefd=False) as stream:
-            while True:
-                chunk = stream.read(64 * 1024)
-                if not chunk:
-                    break
-                byte_count += len(chunk)
-                hasher.update(chunk)
+            return _stream_sha256(stream)
     finally:
         os.close(descriptor)
-    return byte_count, hasher.hexdigest()
 
 
 @contextmanager
@@ -1142,7 +1150,7 @@ class RunStore:
             before = os.fstat(stream.fileno())
             if not _identity_matches(expected_identity, source, before):
                 raise SourceChangedError("target source identity changed before verification")
-            observed_summary = ingest_targets(stream, lambda _occurrence: None)
+            observed_byte_count, observed_sha256 = _stream_sha256(stream)
             after = os.fstat(stream.fileno())
             try:
                 path_value = source.stat()
@@ -1151,8 +1159,9 @@ class RunStore:
             if (
                 not _identity_matches(expected_identity, source, after)
                 or not _identity_matches(expected_identity, source, path_value)
-                or observed_summary != expected_summary
-                or observed_summary.file_sha256 != self._run_spec.input_sha256
+                or observed_byte_count != expected_summary.byte_count
+                or observed_sha256 != expected_summary.file_sha256
+                or observed_sha256 != self._run_spec.input_sha256
             ):
                 raise SourceChangedError("target source changed before verification")
 
@@ -1180,7 +1189,7 @@ class RunStore:
                 self._insert_event(self._connection, EventKind.RUN_TRANSITION, ready)
         finally:
             stream.close()
-        return observed_summary
+        return expected_summary
 
     def iter_occurrences(self) -> Iterator[TargetOccurrence]:
         self._ensure_open()
@@ -1615,35 +1624,57 @@ class RunStore:
         hasher = hashlib.sha256()
         byte_offset = 0
         expected_sequence = 0
+        endpoint_results: Dict[int, Tuple[ProtocolResult, ...]] = {}
         for row in self._connection.execute(
             """
-            SELECT occurrence_sequence, payload, byte_length, payload_sha256,
-                   output_offset, prefix_sha256
-            FROM occurrence_outbox
-            ORDER BY occurrence_sequence
+            SELECT
+                outbox.occurrence_sequence AS outbox_sequence,
+                outbox.payload AS outbox_payload,
+                outbox.byte_length AS outbox_byte_length,
+                outbox.payload_sha256 AS outbox_payload_sha256,
+                outbox.output_offset AS outbox_output_offset,
+                outbox.prefix_sha256 AS outbox_prefix_sha256,
+                occurrence.sequence AS occurrence_sequence,
+                occurrence.line_number AS occurrence_line_number,
+                occurrence.byte_offset AS occurrence_byte_offset,
+                occurrence.line_digest AS occurrence_line_digest,
+                occurrence.address AS occurrence_address,
+                occurrence.port AS occurrence_port,
+                occurrence.endpoint_id AS occurrence_endpoint_id,
+                occurrence.terminal AS occurrence_terminal,
+                occurrence.status AS occurrence_status,
+                result.endpoint_id AS result_endpoint_id,
+                result.payload AS result_payload,
+                result.payload_sha256 AS result_payload_sha256
+            FROM occurrence_outbox AS outbox
+            LEFT JOIN occurrences AS occurrence
+              ON occurrence.sequence = outbox.occurrence_sequence
+            LEFT JOIN endpoint_results AS result
+              ON result.endpoint_id = occurrence.endpoint_id
+            ORDER BY outbox.occurrence_sequence
             """
         ):
-            payload = bytes(row["payload"])
-            sequence = row["occurrence_sequence"]
+            payload = bytes(row["outbox_payload"])
+            sequence = row["outbox_sequence"]
             if (
-                row["byte_length"] != len(payload)
-                or row["payload_sha256"] != hashlib.sha256(payload).hexdigest()
+                row["outbox_byte_length"] != len(payload)
+                or row["outbox_payload_sha256"] != hashlib.sha256(payload).hexdigest()
             ):
                 raise LedgerIntegrityError("outbox payload metadata is inconsistent")
-            self._verify_canonical_payload(sequence, payload)
+            self._verify_canonical_payload(row, payload, endpoint_results)
             if sequence == expected_sequence:
-                if row["output_offset"] != byte_offset:
+                if row["outbox_output_offset"] != byte_offset:
                     raise LedgerIntegrityError("outbox output offset is inconsistent")
                 hasher.update(payload)
                 hasher.update(b"\n")
                 byte_offset += len(payload) + 1
-                if row["prefix_sha256"] != hasher.hexdigest():
+                if row["outbox_prefix_sha256"] != hasher.hexdigest():
                     raise LedgerIntegrityError("outbox prefix digest is inconsistent")
                 expected_sequence += 1
             elif (
                 sequence > expected_sequence
-                and row["output_offset"] is None
-                and row["prefix_sha256"] is None
+                and row["outbox_output_offset"] is None
+                and row["outbox_prefix_sha256"] is None
             ):
                 continue
             else:
@@ -1655,47 +1686,48 @@ class RunStore:
         ):
             raise LedgerIntegrityError("outbox frontier is inconsistent")
 
-    def _verify_canonical_payload(self, sequence: int, payload: bytes) -> None:
-        row = self._connection.execute(
-            """
-            SELECT sequence, line_number, byte_offset, line_digest,
-                   address, port, endpoint_id, terminal, status
-            FROM occurrences
-            WHERE sequence = ?
-            """,
-            (sequence,),
-        ).fetchone()
-        if row is None or row["terminal"] != 1:
+    def _verify_canonical_payload(
+        self,
+        row: sqlite3.Row,
+        payload: bytes,
+        endpoint_results: Dict[int, Tuple[ProtocolResult, ...]],
+    ) -> None:
+        if row["occurrence_sequence"] is None or row["occurrence_terminal"] != 1:
             raise LedgerIntegrityError("outbox row has no terminal occurrence")
         endpoint = None
         protocols: Tuple[ProtocolResult, ...] = ()
         error_codes: Tuple[FailureCode, ...]
-        if row["address"] is None:
+        if row["occurrence_address"] is None:
             error_codes = (FailureCode.INVALID_INPUT,)
         else:
-            endpoint = Endpoint(address=row["address"], port=row["port"])
-            result_row = self._connection.execute(
-                "SELECT payload, payload_sha256 FROM endpoint_results WHERE endpoint_id = ?",
-                (row["endpoint_id"],),
-            ).fetchone()
-            if result_row is None:
+            endpoint = Endpoint(
+                address=row["occurrence_address"],
+                port=row["occurrence_port"],
+            )
+            endpoint_id = row["occurrence_endpoint_id"]
+            if row["result_endpoint_id"] != endpoint_id:
                 raise LedgerIntegrityError("terminal occurrence has no endpoint result")
-            result_payload = bytes(result_row["payload"])
-            if hashlib.sha256(result_payload).hexdigest() != result_row["payload_sha256"]:
-                raise LedgerIntegrityError("endpoint result digest is inconsistent")
-            protocols = _deserialize_protocols(result_payload)
+            if endpoint_id not in endpoint_results:
+                result_payload = bytes(row["result_payload"])
+                if (
+                    hashlib.sha256(result_payload).hexdigest()
+                    != row["result_payload_sha256"]
+                ):
+                    raise LedgerIntegrityError("endpoint result digest is inconsistent")
+                endpoint_results[endpoint_id] = _deserialize_protocols(result_payload)
+            protocols = endpoint_results[endpoint_id]
             error_codes = _occurrence_errors(protocols)
         occurrence = TargetOccurrence(
-            sequence=row["sequence"],
-            line_number=row["line_number"],
-            byte_offset=row["byte_offset"],
-            line_digest=row["line_digest"],
+            sequence=row["occurrence_sequence"],
+            line_number=row["occurrence_line_number"],
+            byte_offset=row["occurrence_byte_offset"],
+            line_digest=row["occurrence_line_digest"],
             endpoint=endpoint,
         )
         record = CanonicalRecord(
             run_id=self._run_id,
             occurrence=occurrence,
-            status=OccurrenceStatus(row["status"]),
+            status=OccurrenceStatus(row["occurrence_status"]),
             error_codes=error_codes,
             protocols=protocols,
         )

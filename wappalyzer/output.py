@@ -20,6 +20,8 @@ from wappalyzer.runstore import (
     RunStore,
 )
 
+_PROJECT_BATCH_RECORDS = 256
+
 
 class OutputError(RuntimeError):
     """Base class for canonical output failures."""
@@ -63,7 +65,8 @@ def _open_projection(path: Path) -> Tuple[int, bool]:
         value = os.fstat(descriptor)
         if not stat.S_ISREG(value.st_mode) or value.st_nlink != 1:
             raise ArtifactSafetyError("canonical projection is not an unaliased regular file")
-        os.fchmod(descriptor, 0o600)
+        if stat.S_IMODE(value.st_mode) != 0o600:
+            os.fchmod(descriptor, 0o600)
         return descriptor, created
     except BaseException:
         os.close(descriptor)
@@ -96,6 +99,16 @@ def _verified_prefix(stream: BinaryIO, state: ProjectionState) -> Any:
     return hasher
 
 
+def _file_identity(value: os.stat_result) -> Tuple[int, int, int, int, int]:
+    return (
+        value.st_dev,
+        value.st_ino,
+        value.st_size,
+        value.st_mtime_ns,
+        value.st_ctime_ns,
+    )
+
+
 def _validate_entry(
     entry: OccurrenceOutboxEntry,
     expected_sequence: int,
@@ -126,6 +139,37 @@ class CanonicalProjector:
         self.store = store
         self.path = store.generation_path / store.CANONICAL_FILENAME
         self._sync_file = sync_file
+        self._hash_state: Optional[ProjectionState] = None
+        self._prefix_hasher: Optional[Any] = None
+        self._projection_identity: Optional[Tuple[int, int, int, int, int]] = None
+
+    def _hasher_for(
+        self,
+        stream: BinaryIO,
+        state: ProjectionState,
+        file_identity: Tuple[int, int, int, int, int],
+    ) -> Any:
+        if (
+            self._hash_state == state
+            and self._prefix_hasher is not None
+            and self._projection_identity == file_identity
+        ):
+            return self._prefix_hasher.copy()
+        hasher = _verified_prefix(stream, state)
+        self._hash_state = state
+        self._prefix_hasher = hasher.copy()
+        self._projection_identity = file_identity
+        return hasher
+
+    def _cache_hasher(
+        self,
+        state: ProjectionState,
+        hasher: Any,
+        descriptor: int,
+    ) -> None:
+        self._hash_state = state
+        self._prefix_hasher = hasher.copy()
+        self._projection_identity = _file_identity(os.fstat(descriptor))
 
     def project(self, max_records: Optional[int] = None) -> int:
         if self.store.status not in {RunStatus.EXECUTING, RunStatus.PROJECTING}:
@@ -139,49 +183,66 @@ class CanonicalProjector:
         stream = os.fdopen(descriptor, "r+b", buffering=0)
         try:
             state = self.store.projection_state
-            size = os.fstat(descriptor).st_size
+            file_stat = os.fstat(descriptor)
+            size = file_stat.st_size
             if size < state.byte_offset:
                 raise ProjectionIntegrityError(
                     "canonical projection is shorter than its durable cursor"
                 )
-            hasher = _verified_prefix(stream, state)
+            hasher = self._hasher_for(stream, state, _file_identity(file_stat))
             truncated = size > state.byte_offset
             if truncated:
                 stream.truncate(state.byte_offset)
             stream.seek(state.byte_offset)
 
-            entries = self.store.contiguous_outbox(
-                state.next_sequence,
-                max_records=max_records,
-            )
-            next_sequence = state.next_sequence
-            byte_offset = state.byte_offset
-            for entry in entries:
-                _validate_entry(entry, next_sequence, byte_offset)
-                stream.write(entry.payload)
-                stream.write(b"\n")
-                hasher.update(entry.payload)
-                hasher.update(b"\n")
-                byte_offset += entry.byte_length + 1
-                next_sequence += 1
-                if entry.prefix_sha256 != hasher.hexdigest():
-                    raise LedgerIntegrityError(
-                        "outbox prefix digest does not match projected bytes"
-                    )
+            total_records = 0
+            sync_pending = created or truncated
+            while max_records is None or total_records < max_records:
+                batch_limit = _PROJECT_BATCH_RECORDS
+                if max_records is not None:
+                    batch_limit = min(batch_limit, max_records - total_records)
+                entries = self.store.contiguous_outbox(
+                    state.next_sequence,
+                    max_records=batch_limit,
+                )
+                if not entries:
+                    break
 
-            if entries or truncated or created:
+                next_sequence = state.next_sequence
+                byte_offset = state.byte_offset
+                for entry in entries:
+                    _validate_entry(entry, next_sequence, byte_offset)
+                    stream.write(entry.payload)
+                    stream.write(b"\n")
+                    hasher.update(entry.payload)
+                    hasher.update(b"\n")
+                    byte_offset += entry.byte_length + 1
+                    next_sequence += 1
+                    if entry.prefix_sha256 != hasher.hexdigest():
+                        raise LedgerIntegrityError(
+                            "outbox prefix digest does not match projected bytes"
+                        )
+
                 stream.flush()
                 self._sync_file(descriptor)
-            if entries:
-                self.store.advance_projection(
-                    state,
-                    ProjectionState(
-                        next_sequence=next_sequence,
-                        byte_offset=byte_offset,
-                        prefix_sha256=hasher.hexdigest(),
-                    ),
+                sync_pending = False
+                next_state = ProjectionState(
+                    next_sequence=next_sequence,
+                    byte_offset=byte_offset,
+                    prefix_sha256=hasher.hexdigest(),
                 )
-            return len(entries)
+                self.store.advance_projection(state, next_state)
+                state = next_state
+                self._cache_hasher(state, hasher, descriptor)
+                total_records += len(entries)
+                if len(entries) < batch_limit:
+                    break
+
+            if sync_pending:
+                stream.flush()
+                self._sync_file(descriptor)
+                self._cache_hasher(state, hasher, descriptor)
+            return total_records
         finally:
             stream.close()
 

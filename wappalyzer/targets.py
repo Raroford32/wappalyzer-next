@@ -90,7 +90,6 @@ def _source_chunks(source: object) -> Iterator[memoryview]:
             if not chunk:
                 return
             yield chunk
-        return
 
     try:
         chunks = iter(source)  # type: ignore[arg-type]

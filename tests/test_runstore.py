@@ -5,6 +5,7 @@ from dataclasses import replace
 
 import pytest
 
+import wappalyzer.runstore as runstore_module
 from wappalyzer.models import (
     CANONICAL_SCHEMA_VERSION,
     CanonicalRecord,
@@ -214,6 +215,27 @@ def test_second_pass_rejects_changed_source_before_ready(tmp_path, mutation):
         assert store.counts == original_counts
         with pytest.raises(RunStateError):
             store.claim_endpoint()
+
+
+def test_second_pass_verifies_raw_source_without_reparsing_endpoints(tmp_path, monkeypatch):
+    raw = b"192.0.2.10:80\nnot-an-endpoint\n"
+    source = tmp_path / "targets.txt"
+    source.write_bytes(raw)
+
+    with RunStore.create(
+        tmp_path / "generation",
+        run_id="run-source-raw-verification",
+        spec=_run_spec(raw),
+    ) as store:
+        summary = store.ingest(source)
+
+        def fail_if_parsed(*_args, **_kwargs):
+            raise AssertionError("source verification reparsed endpoint records")
+
+        monkeypatch.setattr(runstore_module, "ingest_targets", fail_if_parsed)
+
+        assert store.verify_source(source) == summary
+        assert store.status is RunStatus.READY
 
 
 def test_claim_epoch_attempt_fencing_resets_interrupted_work_and_fans_out_once(tmp_path):

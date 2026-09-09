@@ -85,6 +85,13 @@ def _validate(instance, schema, root):
         if schema.get("uniqueItems"):
             encoded = [json.dumps(item, sort_keys=True) for item in instance]
             assert len(encoded) == len(set(encoded))
+        if "contains" in schema:
+            match_count = sum(
+                _matches(value, schema["contains"], root) for value in instance
+            )
+            assert match_count >= schema.get("minContains", 1)
+            if "maxContains" in schema:
+                assert match_count <= schema["maxContains"]
         for index, child in enumerate(schema.get("prefixItems", ())):
             if index < len(instance):
                 _validate(instance[index], child, root)
@@ -208,6 +215,22 @@ def test_scan_run_schema_rejects_unknown_incomplete_or_operational_fields(mutate
     schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
     document = copy.deepcopy(valid_document())
     mutate(document)
+
+    with pytest.raises(AssertionError):
+        _validate(document, schema, schema)
+
+
+def test_invalid_input_requires_invalid_input_error_code():
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    document = valid_document()
+    document.update(
+        {
+            "endpoint": None,
+            "status": "invalid_input",
+            "error_codes": [],
+            "protocols": [],
+        }
+    )
 
     with pytest.raises(AssertionError):
         _validate(document, schema, schema)

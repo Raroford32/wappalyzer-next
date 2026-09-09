@@ -4,6 +4,7 @@ import stat
 
 import pytest
 
+import wappalyzer.output as output_module
 from wappalyzer.models import (
     CANONICAL_SCHEMA_VERSION,
     Protocol,
@@ -136,6 +137,40 @@ def test_zero_records_create_a_zero_byte_projection(tmp_path):
         assert projector.path.read_bytes() == b""
         assert store.projection_state.next_sequence == 0
         assert store.projection_state.byte_offset == 0
+    finally:
+        store.close()
+
+
+def test_projector_fetches_large_outbox_in_bounded_batches_and_reuses_prefix_hash(
+    tmp_path,
+    monkeypatch,
+):
+    record_count = 300
+    store = _terminal_store(tmp_path, b"invalid\n" * record_count)
+    fetch_limits = []
+    prefix_validations = 0
+    contiguous_outbox = store.contiguous_outbox
+    verified_prefix = output_module._verified_prefix
+
+    def tracked_outbox(start_sequence, max_records=None):
+        fetch_limits.append(max_records)
+        return contiguous_outbox(start_sequence, max_records=max_records)
+
+    def tracked_prefix(stream, state):
+        nonlocal prefix_validations
+        prefix_validations += 1
+        return verified_prefix(stream, state)
+
+    monkeypatch.setattr(store, "contiguous_outbox", tracked_outbox)
+    monkeypatch.setattr(output_module, "_verified_prefix", tracked_prefix)
+
+    try:
+        projector = CanonicalProjector(store)
+
+        assert projector.project() == record_count
+        assert fetch_limits == [256, 256]
+        assert projector.project() == 0
+        assert prefix_validations == 1
     finally:
         store.close()
 

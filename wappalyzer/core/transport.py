@@ -5,14 +5,13 @@ import socket
 import ssl
 import time
 from dataclasses import dataclass, field
-from enum import Enum
 from typing import Any, Callable, Iterable, Mapping, Optional, Tuple, Union
 from urllib.parse import SplitResult, urlsplit, urlunsplit
 
 import requests
 from urllib3.util import Timeout
 
-from wappalyzer.models import Endpoint, FailureCode
+from wappalyzer.models import Endpoint, FailureCode, StringEnum
 
 _BODY_CHUNK_BYTES = 64 * 1024
 _DIAGNOSTIC_VERSION = b"transport-diagnostic-v1"
@@ -40,10 +39,6 @@ _METADATA_HOST_ALIASES = frozenset(
     }
 )
 IPAddress = Union[ipaddress.IPv4Address, ipaddress.IPv6Address]
-
-
-class StringEnum(str, Enum):
-    """A string enum that works on every supported Python version."""
 
 
 class RequestPurpose(StringEnum):
