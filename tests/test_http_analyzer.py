@@ -4,6 +4,7 @@ from requests.cookies import cookiejar_from_dict
 from requests.structures import CaseInsensitiveDict
 
 from wappalyzer.core import analyzer, utils
+from wappalyzer.models import ChannelOwner, EvidenceLimit
 
 HTML = b"""
 <!doctype html>
@@ -139,6 +140,33 @@ def test_asset_budget_is_shared_across_resource_classes(monkeypatch):
 
     assert len(scripts) == 2
     assert styles == {}
+
+
+def test_asset_budget_reports_channel_count_truncation():
+    budget = analyzer.AssetBudget(1)
+
+    assert budget.claim(["a", "b"], channel="scripts") == ["a"]
+    assert budget.truncations == {"scripts": (EvidenceLimit.COUNT,)}
+
+
+def test_complete_static_stage_emits_only_static_owned_raw_channels(monkeypatch):
+    database = {
+        "HtmlTech": {"cats": [], "html": "Visible Marker"},
+        "RobotsTech": {"cats": [], "robots": "Disallow"},
+    }
+    monkeypatch.setattr(analyzer, "tech_db", database)
+    monkeypatch.setattr(analyzer, "DETECTOR_PLAN", analyzer.build_detector_plan(database))
+
+    evidence = analyzer.collect_evidence(response(), "fast")
+    evidence["robots"] = "Disallow: /private"
+    detections = analyzer.collect_raw_detections(
+        evidence,
+        owner=ChannelOwner.STATIC,
+    )
+
+    assert [(item.technology, item.channel) for item in detections] == [
+        ("RobotsTech", "robots")
+    ]
 
 
 def test_primary_request_failure_is_not_reported_as_empty_success(monkeypatch):
