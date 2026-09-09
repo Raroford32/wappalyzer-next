@@ -1,7 +1,7 @@
 import asyncio
 import inspect
 from dataclasses import dataclass
-from typing import Awaitable, Callable, Dict, Optional, Sequence, Tuple
+from typing import Dict, Sequence
 
 from wappalyzer.models import (
     FailureCode,

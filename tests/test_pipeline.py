@@ -6,7 +6,6 @@ import pytest
 
 from wappalyzer.models import (
     CANONICAL_SCHEMA_VERSION,
-    Endpoint,
     FailureCode,
     Protocol,
     ProtocolResult,
