@@ -18,8 +18,16 @@ from wappalyzer.core.config import extension_path
 from wappalyzer.core.matcher import better_version
 from wappalyzer.core.requester import VERIFY_TLS
 from wappalyzer.core.utils import enrich_result
-from wappalyzer.evidence import RawDetection
-from wappalyzer.models import CHANNEL_REGISTRY, ChannelOwner
+from wappalyzer.evidence import RawDetection, StageEvidence
+from wappalyzer.models import (
+    CHANNEL_REGISTRY,
+    ChannelOwner,
+    EvidenceLimit,
+    EvidenceTruncation,
+    ResponseIdentity,
+    StageName,
+    StageStatus,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -939,28 +947,42 @@ async def _clear_target_state(driver, page):
         raise RuntimeError("Target cleanup failed: " + "; ".join(failures))
 
 
-async def process_url(driver, url):
+async def _process_page(driver, url, *, raw):
     page = await driver.context.new_page()
     driver.page = page
+    response = None
+    navigation_timed_out = False
 
     try:
         await driver.apply_pending_cookies(url)
 
         try:
-            await page.goto(
+            response = await page.goto(
                 url,
                 wait_until="load",
                 timeout=driver.timeout_ms,
             )
         except PlaywrightTimeoutError:
+            navigation_timed_out = True
             try:
                 await page.evaluate("() => window.stop()")
             except Exception:
                 pass
 
         await _stimulate_page(page)
-
-        return url, await _get_detections(driver, page.url)
+        detections = (
+            await _get_detections(driver, page.url, raw=True)
+            if raw
+            else await _get_detections(driver, page.url)
+        )
+        content = await page.content() if raw else ""
+        return (
+            detections,
+            page.url,
+            response.status if response is not None else None,
+            content,
+            navigation_timed_out,
+        )
     finally:
         cleanup_failures = []
 
@@ -983,6 +1005,59 @@ async def process_url(driver, url):
                 "Retiring browser driver after cleanup failure: %s",
                 "; ".join(cleanup_failures),
             )
+
+
+async def process_url(driver, url):
+    detections, _effective_url, _status, _content, _timed_out = await _process_page(
+        driver,
+        url,
+        raw=False,
+    )
+    return url, detections
+
+
+async def process_url_evidence(driver, url):
+    detections, effective_url, http_status, content, timed_out = await _process_page(
+        driver,
+        url,
+        raw=True,
+    )
+    raw = raw_browser_detections(detections)
+    truncations = (
+        tuple(
+            EvidenceTruncation(
+                channel=channel,
+                limits=(EvidenceLimit.TIMER,),
+            )
+            for channel, registration in CHANNEL_REGISTRY.items()
+            if registration.owner is ChannelOwner.BROWSER
+        )
+        if timed_out
+        else ()
+    )
+    status = (
+        StageStatus.PARTIAL
+        if truncations
+        else StageStatus.SUCCESS
+        if raw
+        else StageStatus.SUCCESS_EMPTY
+    )
+    identity = (
+        ResponseIdentity(
+            effective_url=effective_url,
+            http_status=http_status,
+            content_sha256=hashlib.sha256(content.encode("utf-8")).hexdigest(),
+        )
+        if http_status is not None
+        else None
+    )
+    return StageEvidence(
+        name=StageName.BROWSER,
+        status=status,
+        response_identity=identity,
+        detections=raw,
+        truncations=truncations,
+    )
 
 
 def cookie_to_cookies(cookie):
