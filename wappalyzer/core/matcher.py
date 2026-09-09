@@ -1,3 +1,4 @@
+import functools
 import re
 
 """
@@ -13,26 +14,28 @@ jquery-([0-9.]+).js\\;version:\\1
 foo\\1   Returns foo with the first match appended.
 """
 
+
 def group_or_literal(option, match):
     def replace_group(group_match):
         try:
-            return match.group(int(group_match.group(1))) or ''
+            return match.group(int(group_match.group(1))) or ""
         except (IndexError, ValueError):
-            return ''
+            return ""
 
-    return re.sub(r'\\(\d+)', replace_group, option)
+    return re.sub(r"\\(\d+)", replace_group, option)
+
 
 def get_version(match, version_type):
-    version = ''
-    if version_type == '':
+    version = ""
+    if version_type == "":
         return version
-    if '?:' in version_type: # \\1?:b
-        condition, fallback = version_type.split('?:', 1)
+    if "?:" in version_type:  # \\1?:b
+        condition, fallback = version_type.split("?:", 1)
         if not group_or_literal(condition, match):
             version = group_or_literal(fallback, match)
-    elif '?' in version_type and ':' in version_type: # \\1?a:b or \\1?a:
-        condition, choices = version_type.split('?', 1)
-        truthy, falsy = choices.split(':', 1)
+    elif "?" in version_type and ":" in version_type:  # \\1?a:b or \\1?a:
+        condition, choices = version_type.split("?", 1)
+        truthy, falsy = choices.split(":", 1)
         version = group_or_literal(
             truthy if group_or_literal(condition, match) else falsy,
             match,
@@ -40,77 +43,183 @@ def get_version(match, version_type):
     else:
         version = group_or_literal(version_type, match)
     if version:
-        version = re.split(r'[\)\]\},]', version.replace('\'', '').replace('"', ''))[0]
+        version = re.split(r"[\)\]\},]", version.replace("'", "").replace('"', ""))[0]
+    return normalize_version(version)
+
+
+def normalize_version(version):
+    version = normalize_match_value(version).strip()
+
+    if not version or len(version) > 15 or not re.fullmatch(r"[A-Za-z0-9._-]+", version):
+        return ""
+
+    numeric_prefix = re.match(r"\d+", version)
+
+    if numeric_prefix and int(numeric_prefix.group()) >= 10_000:
+        return ""
+
     return version
+
 
 def normalize_match_value(value):
     if isinstance(value, bool):
         return str(value).lower()
     if value is None:
-        return ''
+        return ""
     return str(value)
 
+
 def parse_pattern(regex):
+    regex = normalize_match_value(regex)
     confidence = 100
     clean_regex = regex
-    if '\\;confidence:' in clean_regex:
-        this_match = re.search(r'\\;confidence:(\d+)', regex)
+    if "\\;confidence:" in clean_regex:
+        this_match = re.search(r"\\;confidence:(\d+)", regex)
         confidence = int(this_match.group(1).strip())
-        clean_regex = clean_regex.replace(this_match.group(0), '')
-    version_type = ''
-    if '\\;version:' in clean_regex:
-        version_type = clean_regex.split('\\;version:')[1]
-        clean_regex = clean_regex.split('\\;version:')[0]
+        clean_regex = clean_regex.replace(this_match.group(0), "")
+    version_type = ""
+    if "\\;version:" in clean_regex:
+        version_type = clean_regex.split("\\;version:")[1]
+        clean_regex = clean_regex.split("\\;version:")[0]
     return clean_regex, version_type, confidence
 
-def single_match(regex, string):
+
+@functools.cache
+def compile_pattern(regex):
     clean_regex, version_type, confidence = parse_pattern(regex)
 
-    this_match = ''
     try:
-        this_match = re.search(clean_regex, string)
-    except Exception as e:
-        if 're.error: bad escape' in str(e):
-            problem = re.search(r'bad escape (.)', str(e)).group(1)
-            this_match = re.search(clean_regex.replace(problem, '\\' + problem), string)
+        return re.compile(clean_regex, re.IGNORECASE), version_type, confidence
+    except re.error:
+        repaired_regex = repair_javascript_pattern(clean_regex)
+
+        try:
+            return re.compile(repaired_regex, re.IGNORECASE), version_type, confidence
+        except re.error:
+            return None, version_type, confidence
+
+
+def repair_javascript_pattern(regex):
+    valid_letter_escapes = set("AbBdDsSwWZfnrtvaxuUN")
+
+    def replace_escape(match):
+        character = match.group(1)
+        return match.group(0) if character in valid_letter_escapes else character
+
+    regex = re.sub(r"\\([A-Za-z])", replace_escape, regex)
+    return regex.replace(r"\.-", r"\.\-")
+
+
+def version_key(version):
+    parts = []
+
+    for part in re.split(r"(\d+)", version or ""):
+        if not part:
+            continue
+
+        if part.isdigit():
+            parts.append((1, int(part)))
+        else:
+            parts.append((0, part.casefold()))
+
+    return tuple(parts)
+
+
+def version_rank(version):
+    normalized = version or ""
+    return (
+        version_key(normalized),
+        len(normalized),
+        normalized.casefold(),
+        normalized,
+    )
+
+
+def better_version(candidate, current):
+    if not candidate:
+        return current or ""
+
+    if not current:
+        return candidate
+
+    return candidate if version_rank(candidate) > version_rank(current) else current
+
+
+def match_key(matched, version, confidence):
+    return (
+        bool(matched),
+        int(confidence),
+        bool(version),
+        version_rank(version),
+    )
+
+
+def better_match(candidate, current):
+    return candidate if match_key(*candidate) > match_key(*current) else current
+
+
+def combine_matches(current, candidate):
+    if not candidate[0]:
+        return current
+
+    if not current[0]:
+        return candidate
+
+    return (
+        True,
+        better_version(candidate[1], current[1]),
+        min(int(current[2]) + int(candidate[2]), 100),
+    )
+
+
+def single_match(regex, string):
+    compiled, version_type, confidence = compile_pattern(regex)
+
+    if compiled is None:
+        return False, "", 0
+
+    this_match = compiled.search(normalize_match_value(string))
     if this_match:
         return True, get_version(this_match, version_type), confidence
-    return False, '', 0
+    return False, "", 0
+
 
 def match(regex, string):
     if isinstance(string, (list, tuple, set)):
         to_match = string
     else:
         to_match = [string]
-    best_match = False
-    best_version = ''
-    best_confidence = 0
+    regexes = [regex] if isinstance(regex, str) else regex
+    aggregate = (False, "", 0)
 
-    for s in to_match:
-        if not isinstance(s, str):
-            s = normalize_match_value(s)
-        regexes = [regex] if isinstance(regex, str) else regex
-        for r in regexes:
-            this_match, version, confidence = single_match(r, s)
-            if this_match:
-                if (confidence > best_confidence) or (confidence == best_confidence and version > best_version):
-                    best_match = True
-                    best_version = version
-                    best_confidence = confidence
+    for pattern in dict.fromkeys(normalize_match_value(item) for item in regexes):
+        pattern_match = (False, "", 0)
 
-    return best_match, best_version, best_confidence
+        for value in to_match:
+            pattern_match = better_match(single_match(pattern, value), pattern_match)
+
+        aggregate = combine_matches(aggregate, pattern_match)
+
+    return aggregate
 
 
-def match_dict(pattern_dict, response_dict):
+def match_dict(pattern_dict, response_dict, case_insensitive_keys=False):
+    if case_insensitive_keys:
+        response_dict = {
+            normalize_match_value(key).casefold(): value for key, value in response_dict.items()
+        }
+
+    aggregate = (False, "", 0)
+
     for name, pattern in pattern_dict.items():
+        if case_insensitive_keys:
+            name = normalize_match_value(name).casefold()
+
         if name in response_dict:
             values = response_dict[name]
             if not isinstance(values, list):
                 values = [values]
-            for value in values:
-                if pattern == '':
-                    return True, '', 100
-                matched, version, confidence = match(pattern, value)
-                if matched:
-                    return True, version, confidence
-    return False, '', 0
+            candidate = (True, "", 100) if pattern == "" else match(pattern, values)
+            aggregate = combine_matches(aggregate, candidate)
+
+    return aggregate

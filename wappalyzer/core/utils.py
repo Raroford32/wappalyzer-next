@@ -1,7 +1,10 @@
 import csv
+import html
 import json
 import sys
+
 from huepy import bold, green
+
 from wappalyzer.core.config import cat_db, groups_db, tech_db
 from wappalyzer.core.matcher import parse_pattern
 
@@ -9,66 +12,205 @@ from wappalyzer.core.matcher import parse_pattern
 def get_cats_and_groups(tech_name):
     cats = []
     groups = []
-    for cat in tech_db[tech_name]['cats']:
-        cats.append(cat_db[str(cat)]['name'])
-        for group in cat_db[str(cat)]['groups']:
-            this_group = groups_db[str(group)]['name']
+    for cat in tech_db.get(tech_name, {}).get("cats", []):
+        category = cat_db.get(str(cat), {})
+        category_name = category.get("name")
+
+        if category_name and category_name not in cats:
+            cats.append(category_name)
+
+        for group in category.get("groups", []):
+            this_group = groups_db.get(str(group), {}).get("name")
+
+            if not this_group:
+                continue
+
             if this_group not in groups:
                 groups.append(this_group)
+
     return cats, groups
 
-def create_result(technologies):
-    enriched = {}
-    excluded = []
-    implied = []
-    required = []
-    for tech_name, value in technologies.items():
-        this_tech = value.copy()
-        if tech_name not in tech_db:
-            this_tech['categories'], this_tech['groups'] = [], []
-            continue
-        this_tech['categories'], this_tech['groups'] = get_cats_and_groups(tech_name)
-        if 'requires' in tech_db[tech_name]:
-            if type(tech_db[tech_name]["requires"]) == list:
-                required.extend(tech_db[tech_name]['requires'])
-            else:
-                required.append(tech_db[tech_name]['requires'])
-        if 'implies' in tech_db[tech_name]:
-            implied_techs = [tech_db[tech_name]['implies']]
-            if type(tech_db[tech_name]['implies']) == list:
-                implied_techs = tech_db[tech_name]['implies']
-            for implied_tech in implied_techs:
-                implied_tech_name, _, _ = parse_pattern(implied_tech)
-                implied.append(implied_tech_name)
-        if 'excludes' in tech_db[tech_name]:
-            if type(tech_db[tech_name]['excludes']) == list:
-                excluded.extend(tech_db[tech_name]['excludes'])
-            else:
-                excluded.append(tech_db[tech_name]['excludes'])
-        enriched[tech_name] = this_tech
 
-    for tech in list(set(required).union(set(implied) - set(excluded))):
-        if tech not in enriched:
-            enriched[tech] = {
-                'version': '',
-                'confidence': 100,
-                'categories': get_cats_and_groups(tech)[0],
-                'groups': get_cats_and_groups(tech)[1]
-            }
+def relationship_names(value):
+    values = value if isinstance(value, list) else [value]
+    return [parse_pattern(item)[0] for item in values]
+
+
+def detection_rank(name, detection):
+    return (
+        detection.get("confidence", 0),
+        detection.get("_direct", False),
+        bool(detection.get("version")),
+        -list(tech_db).index(name) if name in tech_db else 0,
+    )
+
+
+def resolve_implies(detections):
+    changed = True
+
+    while changed:
+        changed = False
+
+        for source_name in sorted(tuple(detections)):
+            source_data = tech_db.get(source_name, {})
+            implied_values = source_data.get("implies", [])
+            implied_values = (
+                implied_values if isinstance(implied_values, list) else [implied_values]
+            )
+
+            for implied_value in implied_values:
+                implied_name, version, confidence = parse_pattern(implied_value)
+
+                if implied_name not in tech_db:
+                    continue
+
+                candidate = {
+                    "version": version,
+                    "confidence": min(
+                        detections[source_name].get("confidence", 100),
+                        confidence,
+                    ),
+                    "_direct": False,
+                }
+
+                if implied_name not in detections:
+                    detections[implied_name] = candidate
+                    changed = True
+
+
+def resolve_excludes(detections):
+    to_remove = set()
+
+    for source_name in sorted(detections):
+        source_excludes = relationship_names(tech_db.get(source_name, {}).get("excludes", []))
+        for excluded_name in source_excludes:
+            if excluded_name not in detections or excluded_name in to_remove:
+                continue
+
+            target_excludes = set(
+                relationship_names(tech_db.get(excluded_name, {}).get("excludes", []))
+            )
+
+            if source_name in target_excludes:
+                source_rank = detection_rank(source_name, detections[source_name])
+                target_rank = detection_rank(excluded_name, detections[excluded_name])
+
+                if source_rank < target_rank:
+                    to_remove.add(source_name)
+                elif target_rank < source_rank:
+                    to_remove.add(excluded_name)
+                else:
+                    to_remove.add(max(source_name, excluded_name))
+            else:
+                to_remove.add(excluded_name)
+
+    for name in to_remove:
+        detections.pop(name, None)
+
+
+def requirements_met(name, detections):
+    technology = tech_db.get(name, {})
+    required = relationship_names(technology.get("requires", []))
+    required_categories = technology.get("requiresCategory", [])
+    required_categories = (
+        required_categories if isinstance(required_categories, list) else [required_categories]
+    )
+    gates = []
+
+    if required:
+        gates.append(any(item in detections for item in required))
+
+    if required_categories:
+        detected_categories = {
+            category
+            for detected_name in detections
+            for category in tech_db.get(detected_name, {}).get("cats", [])
+        }
+        gates.append(any(category in detected_categories for category in required_categories))
+
+    return not gates or any(gates)
+
+
+def resolve_requirements(detections):
+    admitted = {
+        name: value
+        for name, value in detections.items()
+        if not tech_db.get(name, {}).get("requires")
+        and not tech_db.get(name, {}).get("requiresCategory")
+    }
+    pending = {name: value for name, value in detections.items() if name not in admitted}
+
+    while pending:
+        trigger_detections = {name: value.copy() for name, value in admitted.items()}
+        resolve_excludes(trigger_detections)
+        resolve_implies(trigger_detections)
+        newly_admitted = [
+            name for name in sorted(pending) if requirements_met(name, trigger_detections)
+        ]
+
+        if not newly_admitted:
+            break
+
+        for name in newly_admitted:
+            admitted[name] = pending.pop(name)
+
+    detections.clear()
+    detections.update(admitted)
+
+
+def enrich_result(detections):
+    enriched = {}
+
+    for tech_name in sorted(detections):
+        value = detections[tech_name]
+        categories, groups = get_cats_and_groups(tech_name)
+        enriched[tech_name] = {
+            "version": value.get("version", ""),
+            "confidence": value.get("confidence", 100),
+            "categories": categories,
+            "groups": groups,
+        }
+
     return enriched
+
+
+def create_result(technologies):
+    resolved = {}
+
+    for tech_name, value in technologies.items():
+        confidence = max(0, min(int(value.get("confidence", 100)), 100))
+
+        if confidence == 0:
+            continue
+
+        candidate = {
+            "version": value.get("version", ""),
+            "confidence": confidence,
+            "_direct": True,
+        }
+
+        resolved[tech_name] = candidate
+
+    resolve_requirements(resolved)
+    resolve_excludes(resolved)
+    resolve_implies(resolved)
+
+    return enrich_result(resolved)
+
 
 def pretty_print(result):
     for url, value in result.items():
-        output_string = bold(green(url)) + ' '
+        output_string = bold(green(url)) + " "
         for name, data in value.items():
-            if data['version']:
+            if data["version"]:
                 output_string += f"{name} v{data['version']}, "
             else:
                 output_string += f"{name}, "
-        print(output_string.rstrip(', '))
+        print(output_string.rstrip(", "))
+
 
 def generate_html_report(data):
-    html_template = '''
+    html_template = """
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -210,35 +352,37 @@ def generate_html_report(data):
     </div>
     
     <div class="results" id="results">
-    '''
-    
+    """
+
     for url, technologies in data.items():
+        safe_url = html.escape(str(url), quote=True)
         html_template += f'''
-        <div class="site" data-url="{url.lower()}">
-            <div class="site-url">{url}</div>
+        <div class="site" data-url="{safe_url.lower()}">
+            <div class="site-url">{safe_url}</div>
             <div class="tech-grid">
         '''
-        
+
         for tech_name, tech_info in technologies.items():
-            version = f" v{tech_info['version']}" if tech_info['version'] else ""
-            categories = ', '.join(tech_info['categories'])
-            groups = ', '.join(tech_info['groups'])
-            
+            safe_tech_name = html.escape(str(tech_name), quote=True)
+            version = f" v{html.escape(str(tech_info['version']))}" if tech_info["version"] else ""
+            categories = html.escape(", ".join(tech_info["categories"]))
+            groups = html.escape(", ".join(tech_info["groups"]))
+
             html_template += f'''
-            <div class="tech-item" data-tech="{tech_name.lower()}">
-                <div class="tech-name">{tech_name}{version}</div>
+            <div class="tech-item" data-tech="{safe_tech_name.lower()}">
+                <div class="tech-name">{safe_tech_name}{version}</div>
                 <div class="tech-meta">
                     {categories} | {groups}
                 </div>
             </div>
             '''
-        
-        html_template += '''
+
+        html_template += """
             </div>
         </div>
-        '''
-    
-    html_template += '''
+        """
+
+    html_template += """
     </div>
 
     <script>
@@ -300,10 +444,12 @@ def generate_html_report(data):
             
             const tag = document.createElement('div');
             tag.className = 'tag';
-            tag.innerHTML = `
-                ${technology}
-                <span class="tag-remove" onclick="removeTag('${technology}')">&times;</span>
-            `;
+            tag.appendChild(document.createTextNode(technology));
+            const removeButton = document.createElement('span');
+            removeButton.className = 'tag-remove';
+            removeButton.textContent = '×';
+            removeButton.onclick = () => removeTag(technology);
+            tag.appendChild(removeButton);
             
             tagsContainer.appendChild(tag);
             document.getElementById('searchInput').value = '';
@@ -393,40 +539,43 @@ def generate_html_report(data):
     </script>
 </body>
 </html>
-    '''
-    
+    """
+
     return html_template
 
-def write_to_file(filepath, data, format='json'):
-    if format == 'json':
-        if filepath == '-':
+
+def write_to_file(filepath, data, format="json"):
+    if format == "json":
+        if filepath == "-":
             json.dump(data, sys.stdout)
-            sys.stdout.write('\n')
+            sys.stdout.write("\n")
         else:
-            with open(filepath, 'w+') as f:
+            with open(filepath, "w+") as f:
                 json.dump(data, f)
-    elif format == 'csv':
-        output = sys.stdout if filepath == '-' else open(filepath, 'w+', newline='')
+    elif format == "csv":
+        output = sys.stdout if filepath == "-" else open(filepath, "w+", newline="")
         try:
             writer = csv.writer(output)
             for url, technologies in data.items():
                 for tech, tech_data in technologies.items():
-                    writer.writerow([
-                        url,
-                        tech,
-                        tech_data['version'],
-                        tech_data['confidence'],
-                        ' '.join(tech_data['categories']),
-                        ' '.join(tech_data['groups']),
-                    ])
+                    writer.writerow(
+                        [
+                            url,
+                            tech,
+                            tech_data["version"],
+                            tech_data["confidence"],
+                            " ".join(tech_data["categories"]),
+                            " ".join(tech_data["groups"]),
+                        ]
+                    )
         finally:
-            if filepath != '-':
+            if filepath != "-":
                 output.close()
-    elif format == 'html':
+    elif format == "html":
         html_content = generate_html_report(data)
-        if filepath == '-':
+        if filepath == "-":
             sys.stdout.write(html_content)
-            sys.stdout.write('\n')
+            sys.stdout.write("\n")
         else:
-            with open(filepath, 'w', encoding='utf-8') as f:
+            with open(filepath, "w", encoding="utf-8") as f:
                 f.write(html_content)

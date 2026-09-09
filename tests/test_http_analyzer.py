@@ -1,0 +1,300 @@
+import pytest
+from requests import Response
+from requests.cookies import cookiejar_from_dict
+from requests.structures import CaseInsensitiveDict
+
+from wappalyzer.core import analyzer, utils
+from wappalyzer.core.regex_workers import RegexTimeoutError, RegexWorkerPool
+from wappalyzer.models import (
+    ChannelOwner,
+    EvidenceLimit,
+    FailureCode,
+    StageStatus,
+)
+
+HTML = b"""
+<!doctype html>
+<html>
+  <head>
+    <meta http-equiv="X-Generator" content="MetaMarker">
+    <style>.css-marker { color: red }</style>
+    <script>const scriptMarker = "ScriptMarker";</script>
+  </head>
+  <body>
+    <main ng-version="22.1.5">Visible Marker</main>
+  </body>
+</html>
+"""
+
+
+def response():
+    value = Response()
+    value.status_code = 200
+    value.url = "https://example.test/path"
+    value._content = HTML
+    value.headers = CaseInsensitiveDict({"X-Powered-By": "HeaderMarker"})
+    value.cookies = cookiejar_from_dict({"session_marker": "CookieMarker"})
+    return value
+
+
+def test_collects_all_single_request_evidence_channels():
+    evidence = analyzer.collect_evidence(response(), "fast")
+
+    assert any("ScriptMarker" in source for source in evidence["scripts"])
+    assert any("css-marker" in source for source in evidence["css"])
+    assert "Visible Marker" in evidence["text"]
+    assert evidence["meta"]["x-generator"] == "MetaMarker"
+    assert evidence["headers"]["x-powered-by"] == "HeaderMarker"
+    assert evidence["cookies"]["session_marker"] == "CookieMarker"
+
+
+def test_static_source_does_not_manufacture_runtime_or_network_evidence():
+    value = response()
+    value._content = b"""
+    <script>
+      const ReactOnRails = false;
+      const sentry = "https://cdn.example/sentry.js";
+      const shop = "https://store.myshopify.com/path";
+    </script>
+    <script src="/actual.js"></script>
+    """
+
+    evidence = analyzer.collect_evidence(value, "fast")
+
+    assert evidence["js"] == []
+    assert evidence["xhr"] == []
+    assert evidence["scriptSrc"] == ["https://example.test/actual.js"]
+
+
+def test_fast_analyzer_uses_compiled_channel_plan(monkeypatch):
+    database = {
+        "CookieTech": {"cats": [], "cookies": {"SESSION_MARKER": "cookiemarker"}},
+        "CssTech": {"cats": [], "css": r"\.css-marker"},
+        "DomTech": {
+            "cats": [],
+            "dom": {
+                "[ng-version]": {
+                    "attributes": {
+                        "ng-version": r"([\d.]+)\;version:\1",
+                    },
+                },
+            },
+        },
+        "HeaderTech": {"cats": [], "headers": {"x-powered-by": "HeaderMarker"}},
+        "HtmlTech": {"cats": [], "html": "Visible Marker"},
+        "MetaTech": {"cats": [], "meta": {"x-generator": "MetaMarker"}},
+        "ScriptTech": {"cats": [], "scripts": "ScriptMarker"},
+        "TextTech": {"cats": [], "text": "Visible Marker"},
+        "UrlTech": {"cats": [], "url": r"example\.test/path"},
+    }
+    monkeypatch.setattr(analyzer, "tech_db", database)
+    monkeypatch.setattr(analyzer, "DETECTOR_PLAN", analyzer.build_detector_plan(database))
+    monkeypatch.setattr(utils, "tech_db", database)
+    analyzer.prepare_matchers.cache_clear()
+
+    result = analyzer.analyze_from_response(response(), "fast")
+
+    assert list(result) == sorted(database)
+    assert result["DomTech"]["version"] == "22.1.5"
+
+
+def test_asset_credentials_never_cross_origins(monkeypatch):
+    seen = {}
+
+    def fake_fetch(url, timeout, cookie):
+        seen[url] = cookie
+        return url, "ok"
+
+    monkeypatch.setattr(analyzer, "_fetch_asset", fake_fetch)
+    analyzer._fetch_assets(
+        [
+            "https://app.example.test/app.js",
+            "https://cdn.example.test/library.js",
+        ],
+        timeout=5,
+        cookie="session=secret",
+        credential_origin="https://app.example.test/page",
+        budget=analyzer.AssetBudget(2),
+    )
+
+    assert seen["https://app.example.test/app.js"] == "session=secret"
+    assert seen["https://cdn.example.test/library.js"] is None
+
+
+def test_asset_budget_is_shared_across_resource_classes(monkeypatch):
+    monkeypatch.setattr(
+        analyzer,
+        "_fetch_asset",
+        lambda url, timeout, cookie: (url, "ok"),
+    )
+    budget = analyzer.AssetBudget(2)
+
+    scripts = analyzer._fetch_assets(
+        ["https://example.test/a.js", "https://example.test/b.js"],
+        5,
+        None,
+        "https://example.test",
+        budget,
+    )
+    styles = analyzer._fetch_assets(
+        ["https://example.test/a.css"],
+        5,
+        None,
+        "https://example.test",
+        budget,
+    )
+
+    assert len(scripts) == 2
+    assert styles == {}
+
+
+def test_asset_budget_reports_channel_count_truncation():
+    budget = analyzer.AssetBudget(1)
+
+    assert budget.claim(["a", "b"], channel="scripts") == ["a"]
+    assert budget.truncations == {"scripts": (EvidenceLimit.COUNT,)}
+
+
+def test_complete_static_stage_emits_only_static_owned_raw_channels(monkeypatch):
+    database = {
+        "HtmlTech": {"cats": [], "html": "Visible Marker"},
+        "RobotsTech": {"cats": [], "robots": "Disallow"},
+    }
+    monkeypatch.setattr(analyzer, "tech_db", database)
+    monkeypatch.setattr(analyzer, "DETECTOR_PLAN", analyzer.build_detector_plan(database))
+
+    evidence = analyzer.collect_evidence(response(), "fast")
+    evidence["robots"] = "Disallow: /private"
+    detections = analyzer.collect_raw_detections(
+        evidence,
+        owner=ChannelOwner.STATIC,
+    )
+
+    assert [(item.technology, item.channel) for item in detections] == [("RobotsTech", "robots")]
+
+
+def test_complete_static_collection_skips_browser_owned_parsing(monkeypatch):
+    def forbidden(*_args, **_kwargs):
+        raise AssertionError("complete static collection parsed browser-owned evidence")
+
+    monkeypatch.setattr(analyzer, "BeautifulSoup", forbidden)
+    monkeypatch.setattr(analyzer, "get_css", forbidden)
+    monkeypatch.setattr(analyzer, "get_meta", forbidden)
+    monkeypatch.setattr(analyzer, "get_scriptSrc", forbidden)
+
+    evidence = analyzer.collect_static_evidence(response(), deadline=0)
+
+    assert set(evidence) == {"_truncations", "certIssuer", "dns", "probes", "robots"}
+
+
+def test_static_raw_evidence_digest_is_computed_once_per_channel(monkeypatch):
+    database = {
+        "First": {"cats": [], "robots": "marker"},
+        "Second": {"cats": [], "robots": "marker"},
+    }
+    monkeypatch.setattr(analyzer, "DETECTOR_PLAN", analyzer.build_detector_plan(database))
+    original_digest = analyzer._stable_digest
+    values = []
+
+    def recording_digest(value):
+        values.append(value)
+        return original_digest(value)
+
+    monkeypatch.setattr(analyzer, "_stable_digest", recording_digest)
+
+    detections = analyzer.collect_raw_detections(
+        {"robots": "marker"},
+        owner=ChannelOwner.STATIC,
+    )
+
+    assert len(detections) == 2
+    assert values.count("marker") == 3
+
+
+def test_static_stage_delegates_matching_to_isolated_worker_pool(monkeypatch):
+    calls = []
+
+    monkeypatch.setattr(
+        analyzer,
+        "prepare_matchers",
+        lambda: pytest.fail("parent process warmed matchers before isolated matching"),
+    )
+
+    class RecordingPool:
+        def run(self, function, *args, timeout):
+            calls.append((function, args[1], timeout))
+            return function(*args)
+
+    result = analyzer.analyze_static_stage(
+        response(),
+        scan_type="fast",
+        timeout=7,
+        regex_pool=RecordingPool(),
+    )
+
+    assert calls == [(analyzer.collect_raw_detections, ChannelOwner.STATIC, 7)]
+    assert result.status is StageStatus.SUCCESS_EMPTY
+
+
+def test_static_stage_evidence_crosses_spawn_process_boundary():
+    with RegexWorkerPool(workers=1, wall_timeout=5) as pool:
+        result = analyzer.analyze_static_stage(
+            response(),
+            scan_type="fast",
+            timeout=5,
+            regex_pool=pool,
+        )
+
+    assert result.status is StageStatus.SUCCESS_EMPTY
+
+
+def test_static_regex_timeout_is_auditable_partial_evidence():
+    class TimingOutPool:
+        def run(self, _function, *_args, timeout):
+            raise RegexTimeoutError(str(timeout))
+
+    result = analyzer.analyze_static_stage(
+        response(),
+        scan_type="fast",
+        timeout=7,
+        regex_pool=TimingOutPool(),
+    )
+
+    assert result.status is StageStatus.PARTIAL
+    assert result.error_codes == (FailureCode.SCAN_TIMEOUT,)
+    assert {truncation.channel for truncation in result.truncations} == {
+        "certIssuer",
+        "dns",
+        "probe",
+        "robots",
+    }
+    assert all(EvidenceLimit.WORKER in item.limits for item in result.truncations)
+
+
+def test_primary_request_failure_is_not_reported_as_empty_success(monkeypatch):
+    monkeypatch.setattr(analyzer, "get_response", lambda *args, **kwargs: None)
+
+    with pytest.raises(analyzer.ScanRequestError, match="Unable to fetch"):
+        analyzer.http_scan("https://unreachable.example", "fast")
+
+
+def test_expired_url_budget_skips_secondary_requests(monkeypatch):
+    def forbidden(*args, **kwargs):
+        raise AssertionError("secondary request exceeded the URL budget")
+
+    monkeypatch.setattr(analyzer, "get_dns", forbidden)
+    monkeypatch.setattr(analyzer, "get_robots", forbidden)
+    monkeypatch.setattr(analyzer, "get_certIssuer", forbidden)
+    monkeypatch.setattr(analyzer, "_probe_responses", forbidden)
+
+    evidence = analyzer.collect_evidence(
+        response(),
+        "balanced",
+        timeout=1,
+        deadline=0,
+    )
+
+    assert evidence["dns"] == {}
+    assert evidence["robots"] == ""
+    assert evidence["certIssuer"] == ""
+    assert evidence["probes"] == {}

@@ -1,167 +1,763 @@
-import tldextract
 import concurrent.futures
-from bs4 import BeautifulSoup
-from urllib.parse import urlparse
+import functools
+import hashlib
+import json
+import os
+import time
+from urllib.parse import urljoin, urlparse
 
-from wappalyzer.parsers.js import get_js
+import tldextract
+from bs4 import BeautifulSoup
+
+from wappalyzer.analyzers.dom import compile_selector, match_dom
+from wappalyzer.core.config import tech_db
+from wappalyzer.core.matcher import (
+    combine_matches,
+    compile_pattern,
+    match,
+    match_dict,
+    parse_pattern,
+)
+from wappalyzer.core.regex_workers import RegexTimeoutError, RegexWorkerError
+from wappalyzer.core.requester import get_response
+from wappalyzer.evidence import RawDetection, StageEvidence, resolve_raw_detections, stage_status
+from wappalyzer.evidence_limits import (
+    COMPLETE_PROBE_COUNT_LIMIT,
+    COMPLETE_PROBE_ITEM_BYTES_LIMIT,
+)
+from wappalyzer.models import (
+    CHANNEL_REGISTRY,
+    ChannelOwner,
+    EvidenceLimit,
+    EvidenceTruncation,
+    FailureCode,
+    ResponseIdentity,
+    StageName,
+)
+from wappalyzer.parsers.certIssuer import get_certIssuer
+from wappalyzer.parsers.css import get_css
 from wappalyzer.parsers.dns import get_dns
 from wappalyzer.parsers.meta import get_meta
 from wappalyzer.parsers.robots import get_robots
 from wappalyzer.parsers.scriptSrc import get_scriptSrc
-from wappalyzer.parsers.certIssuer import get_certIssuer
 
-from wappalyzer.core.matcher import match, match_dict
-from wappalyzer.core.config import tech_db
-from wappalyzer.analyzers.dom import match_dom
-from wappalyzer.analyzers.js import match_js
-from wappalyzer.core.requester import get_response
-from wappalyzer.core.utils import create_result
+PATTERN_FIELDS = {
+    "certIssuer",
+    "css",
+    "html",
+    "robots",
+    "scriptSrc",
+    "scripts",
+    "text",
+    "url",
+    "xhr",
+}
+DICT_PATTERN_FIELDS = {"cookies", "dns", "headers", "js", "meta"}
+ASSET_LIMIT = max(0, int(os.getenv("WAPPALYZER_ASSET_LIMIT", "64")))
+ASSET_MAX_BYTES = max(
+    1,
+    int(os.getenv("WAPPALYZER_MAX_ASSET_BYTES", str(2 * 1024 * 1024))),
+)
+PROBES = {name: data["probe"] for name, data in tech_db.items() if "probe" in data}
+DETECTION_FIELDS = PATTERN_FIELDS | DICT_PATTERN_FIELDS | {"dom", "probe"}
 
 
-def process_scripts(base_url, js, scriptSrc):
-    def fetch_and_process(src):
-        if src.endswith('.js') or '.js?' in src:
-            js_code = get_response(src)
-            if js_code and js_code.headers.get('Content-Type', '').startswith('application/javascript'):
-                js_dict, low_dict, js_classes = get_js(js_code.text)
-                if js_dict:
-                    return {'dict': js_dict, 'low_dict': low_dict, 'classes': js_classes, 'src': src}
-        return None
+def build_detector_plan(database=None):
+    database = tech_db if database is None else database
+    return {
+        field: tuple(
+            (name, technology[field])
+            for name, technology in sorted(database.items())
+            if field in technology
+        )
+        for field in DETECTION_FIELDS
+    }
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-        futures = {executor.submit(fetch_and_process, src): src for src in scriptSrc}
+
+DETECTOR_PLAN = build_detector_plan()
+
+
+class ScanRequestError(RuntimeError):
+    pass
+
+
+def asset_worker_count(cpu_budget=None):
+    override = os.getenv("WAPPALYZER_ASSET_WORKERS")
+    available = max(1, cpu_budget or os.cpu_count() or 1)
+    requested = max(1, int(override)) if override else available
+    return min(requested, available)
+
+
+def _remaining_seconds(deadline):
+    return max(0.0, deadline - time.monotonic())
+
+
+def _compile_value(value):
+    values = value if isinstance(value, list) else [value]
+
+    for pattern in values:
+        compile_pattern(pattern)
+
+
+@functools.cache
+def prepare_matchers():
+    for technology in tech_db.values():
+        for field in PATTERN_FIELDS:
+            if field in technology:
+                _compile_value(technology[field])
+
+        for field in DICT_PATTERN_FIELDS:
+            patterns = technology.get(field, {})
+
+            if isinstance(patterns, dict):
+                for pattern in patterns.values():
+                    _compile_value(pattern)
+
+        dom = technology.get("dom")
+
+        if isinstance(dom, str):
+            compile_selector(parse_pattern(dom)[0])
+        elif isinstance(dom, list):
+            for selector in dom:
+                compile_selector(parse_pattern(selector)[0])
+        elif isinstance(dom, dict):
+            for selector, rule in dom.items():
+                compile_selector(parse_pattern(selector)[0])
+
+                if not isinstance(rule, dict):
+                    _compile_value(rule)
+                    continue
+
+                for key in ("exists", "src", "text"):
+                    if rule.get(key):
+                        _compile_value(rule[key])
+
+                for key in ("attributes", "properties"):
+                    patterns = rule.get(key, {})
+
+                    if not isinstance(patterns, dict):
+                        continue
+
+                    for pattern in patterns.values():
+                        if pattern:
+                            _compile_value(pattern)
+
+
+class AssetBudget:
+    def __init__(self, limit):
+        self.remaining = max(0, limit)
+        self._truncations = {}
+
+    @property
+    def truncations(self):
+        return {
+            channel: tuple(sorted(limits, key=lambda limit: list(EvidenceLimit).index(limit)))
+            for channel, limits in sorted(self._truncations.items())
+        }
+
+    def truncate(self, channel, limit):
+        if channel not in CHANNEL_REGISTRY:
+            raise ValueError(f"unknown evidence channel: {channel}")
+        if not isinstance(limit, EvidenceLimit):
+            raise TypeError("limit must be an EvidenceLimit")
+        self._truncations.setdefault(channel, set()).add(limit)
+
+    def claim(self, urls, channel=None):
+        unique = list(dict.fromkeys(urls))
+        claimed = unique[: self.remaining]
+        self.remaining -= len(claimed)
+        if channel is not None and len(claimed) != len(unique):
+            self.truncate(channel, EvidenceLimit.COUNT)
+        return claimed
+
+
+def _origin(url):
+    parsed = urlparse(url)
+    default_port = 443 if parsed.scheme.casefold() == "https" else 80
+    return (
+        parsed.scheme.casefold(),
+        (parsed.hostname or "").casefold(),
+        parsed.port or default_port,
+    )
+
+
+def _same_origin(first_url, second_url):
+    return _origin(first_url) == _origin(second_url)
+
+
+def _fetch_asset(url, timeout, cookie):
+    response = get_response(
+        url,
+        cookie=cookie,
+        timeout=timeout,
+        max_bytes=ASSET_MAX_BYTES,
+    )
+
+    if response is None:
+        return url, ""
+
+    return response.url, response.text
+
+
+def _fetch_assets(
+    urls,
+    timeout,
+    cookie,
+    credential_origin,
+    budget,
+    asset_workers=None,
+    channel=None,
+):
+    ordered_urls = budget.claim(urls, channel=channel)
+
+    if not ordered_urls:
+        return {}
+
+    responses = {}
+    worker_count = min(len(ordered_urls), asset_worker_count(asset_workers))
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=worker_count) as executor:
+        futures = {
+            executor.submit(
+                _fetch_asset,
+                url,
+                timeout,
+                cookie if _same_origin(credential_origin, url) else None,
+            ): url
+            for url in ordered_urls
+        }
+
         for future in concurrent.futures.as_completed(futures):
-            result = future.result()
-            if result:
-                js.append({'dict': result['dict'], 'low_dict': result['low_dict'], 'classes': result['classes']})
-                js_code_response = get_response(result['src'])
-                if js_code_response:
-                    scriptSrc.extend(get_scriptSrc(base_url, js_code_response.text))
+            requested_url = futures[future]
+
+            try:
+                result_url, text = future.result()
+                responses[requested_url] = text
+                responses.setdefault(result_url, text)
+            except Exception:
+                responses[requested_url] = ""
+
+    return responses
 
 
-def analyze_from_response(response, scan_type):
-    soup = BeautifulSoup(response.text, 'html.parser')
-    r = tldextract.extract(response.url)
-    domain = r.domain + '.' + r.suffix
-    scheme = urlparse(response.url).scheme
-    hostname = urlparse(response.url).hostname
-    base_url = f'{scheme}://{hostname}'
+def _stylesheet_urls(base_url, soup):
+    urls = []
 
-    js = []
-    scriptSrc = get_scriptSrc(response.url, soup)
-    for script in soup.find_all('script'):
-        if not script.get('src'):
-            js_dict, low_dict, js_classes = get_js(script.text)
-            if js_dict:
-                js.append({'dict': js_dict, 'low_dict': low_dict, 'classes': js_classes})
+    for link in soup.find_all("link"):
+        relationship = link.get("rel", [])
+        relationship = relationship if isinstance(relationship, list) else [relationship]
 
-    if scan_type != 'fast':
-        process_scripts(response.url, js, scriptSrc)
+        if "stylesheet" in [item.casefold() for item in relationship]:
+            href = link.get("href")
 
-    dns = get_dns(domain) if scan_type != 'fast' else {}
+            if href:
+                urls.append(urljoin(base_url, href))
+
+    return urls
+
+
+def _probe_responses(
+    base_url,
+    timeout,
+    cookie,
+    budget,
+    asset_workers=None,
+    max_bytes=ASSET_MAX_BYTES,
+    response_fetcher=get_response,
+):
+    urls = {path: urljoin(base_url, path) for probes in PROBES.values() for path in probes}
+    responses = {}
+    claimed_urls = set(budget.claim(urls.values(), channel="probe"))
+    urls = {path: url for path, url in urls.items() if url in claimed_urls}
+
+    if not urls:
+        return responses
+
+    with concurrent.futures.ThreadPoolExecutor(
+        max_workers=min(len(urls), asset_worker_count(asset_workers))
+    ) as executor:
+        futures = {
+            executor.submit(
+                response_fetcher,
+                url,
+                cookie,
+                timeout=timeout,
+                max_bytes=max_bytes,
+            ): path
+            for path, url in urls.items()
+        }
+
+        for future in concurrent.futures.as_completed(futures):
+            path = futures[future]
+
+            try:
+                response = future.result()
+            except Exception:
+                response = None
+
+            responses[path] = (
+                bool(response and response.ok),
+                response.text if response else "",
+            )
+
+    return responses
+
+
+def _collect_auxiliary_evidence(
+    response,
+    scan_type,
+    cookie,
+    deadline,
+    asset_workers,
+    response_fetcher,
+    asset_budget,
+):
+    extracted = tldextract.extract(response.url)
+    parsed_url = urlparse(response.url)
+    domain = ".".join(part for part in (extracted.domain, extracted.suffix) if part)
+    base_url = f"{parsed_url.scheme}://{parsed_url.netloc}"
+    values = {
+        "certIssuer": "",
+        "dns": {},
+        "probes": {},
+        "robots": "",
+    }
+    remaining = _remaining_seconds(deadline)
+
+    if scan_type != "fast" and remaining > 0:
+        auxiliary_workers = min(4, asset_workers)
+        nested_workers = max(1, asset_workers // 2)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=auxiliary_workers) as executor:
+            future_to_field = {
+                executor.submit(
+                    get_robots,
+                    response.url,
+                    remaining,
+                    response_fetcher,
+                ): "robots",
+                executor.submit(
+                    get_certIssuer,
+                    response,
+                    timeout=min(remaining, 5),
+                ): "certIssuer",
+                executor.submit(
+                    _probe_responses,
+                    base_url,
+                    remaining,
+                    cookie,
+                    asset_budget,
+                    nested_workers,
+                    COMPLETE_PROBE_ITEM_BYTES_LIMIT if scan_type == "complete" else ASSET_MAX_BYTES,
+                    response_fetcher,
+                ): "probes",
+            }
+
+            if domain:
+                future_to_field[
+                    executor.submit(
+                        get_dns,
+                        domain,
+                        timeout=min(remaining, 5),
+                        workers=nested_workers,
+                    )
+                ] = "dns"
+
+            for future in concurrent.futures.as_completed(future_to_field):
+                field = future_to_field[future]
+
+                try:
+                    values[field] = future.result()
+                except Exception:
+                    values[field] = {} if field in {"dns", "probes"} else ""
+    elif scan_type != "fast":
+        for channel in ("certIssuer", "probe", "robots"):
+            asset_budget.truncate(channel, EvidenceLimit.TIMER)
+        if domain:
+            asset_budget.truncate("dns", EvidenceLimit.TIMER)
+
+    return values
+
+
+def collect_evidence(
+    response,
+    scan_type,
+    cookie=None,
+    timeout=30,
+    deadline=None,
+    asset_workers=None,
+    response_fetcher=get_response,
+):
+    if deadline is None:
+        deadline = time.monotonic() + timeout
+    asset_workers = asset_worker_count(asset_workers)
+    soup = BeautifulSoup(response.text, "html.parser")
+    scripts = []
+    asset_budget = AssetBudget(
+        COMPLETE_PROBE_COUNT_LIMIT if scan_type == "complete" else ASSET_LIMIT
+    )
+
+    for script in soup.find_all("script"):
+        if not script.get("src"):
+            source = script.string or script.get_text()
+            scripts.append(source)
+
+    script_sources = get_scriptSrc(response.url, soup)
+    css_sources = get_css(soup)
+
+    if scan_type not in {"fast", "complete"}:
+        remaining = _remaining_seconds(deadline)
+
+        if script_sources:
+            if remaining > 0:
+                fetched_scripts = _fetch_assets(
+                    script_sources,
+                    remaining,
+                    cookie,
+                    response.url,
+                    asset_budget,
+                    asset_workers,
+                    "scripts",
+                )
+                scripts.extend(
+                    fetched_scripts[url] for url in script_sources if fetched_scripts.get(url)
+                )
+            else:
+                asset_budget.truncate("scripts", EvidenceLimit.TIMER)
+
+        css_urls = _stylesheet_urls(response.url, soup)
+        remaining = _remaining_seconds(deadline)
+
+        if css_urls and remaining > 0:
+            css_sources.extend(
+                _fetch_assets(
+                    css_urls,
+                    remaining,
+                    cookie,
+                    response.url,
+                    asset_budget,
+                    asset_workers,
+                    "css",
+                ).values()
+            )
+        elif css_urls:
+            asset_budget.truncate("css", EvidenceLimit.TIMER)
+
     meta = get_meta(soup)
     cookies = response.cookies.get_dict()
-    robots = get_robots(response.url) if scan_type != 'fast' else ''
-    certIssuer = get_certIssuer(response)
+    auxiliary = _collect_auxiliary_evidence(
+        response,
+        scan_type,
+        cookie,
+        deadline,
+        asset_workers,
+        response_fetcher,
+        asset_budget,
+    )
 
-    result = {}
-
-    def update_entry(tech_name, version, confidence):
-        if tech_name in result:
-            result[tech_name]['confidence'] = min(result[tech_name]['confidence'] + confidence, 100)
-            if version and not result[tech_name]['version']:
-                result[tech_name]['version'] = version
-        else:
-            result[tech_name] = {'version': version or '', 'confidence': confidence}
-        has_version = result[tech_name]['version'] != ''
-        return result[tech_name]['confidence'] == 100 and has_version
-
-    for tech_name, tech_data in tech_db.items():
-        detected = False
-
-        if certIssuer and 'certIssuer' in tech_data:
-            matched, version, confidence = match(tech_data['certIssuer'], certIssuer)
-            if matched and update_entry(tech_name, version, confidence):
-                detected = True
-
-        if not detected and 'scriptSrc' in tech_data:
-            for src in scriptSrc:
-                matched, version, confidence = match(tech_data['scriptSrc'], src)
-                if matched and update_entry(tech_name, version, confidence):
-                    if result[tech_name]['confidence'] == 100 and result[tech_name]['version']:
-                        detected = True
-                        break
-
-        if not detected and 'dom' in tech_data:
-            matched, version, confidence = match_dom(tech_data['dom'], soup)
-            if matched and update_entry(tech_name, version, confidence):
-                detected = True
-
-        if not detected and 'meta' in tech_data:
-            matched, version, confidence = match_dict(tech_data['meta'], meta)
-            if matched and update_entry(tech_name, version, confidence):
-                detected = True
-
-        if not detected and 'xhr' in tech_data:
-            for x in scriptSrc:
-                matched, version, confidence = match(tech_data['xhr'], x)
-                if matched and update_entry(tech_name, version, confidence):
-                    if result[tech_name]['confidence'] == 100 and result[tech_name]['version']:
-                        detected = True
-                        break
-
-        if not detected and 'html' in tech_data:
-            matched, version, confidence = match(tech_data['html'], response.text)
-            if matched and update_entry(tech_name, version, confidence):
-                detected = True
-
-        if not detected and 'js' in tech_data:
-            matched, version, confidence = match_js(tech_data['js'], js)
-            if matched and update_entry(tech_name, version, confidence):
-                detected = True
-
-        if not detected and 'cookies' in tech_data:
-            matched, version, confidence = match_dict(tech_data['cookies'], cookies)
-            if matched and update_entry(tech_name, version, confidence):
-                detected = True
-
-        if not detected and 'headers' in tech_data:
-            matched, version, confidence = match_dict(tech_data['headers'], response.headers)
-            if matched and update_entry(tech_name, version, confidence):
-                detected = True
-
-        if not detected and 'url' in tech_data:
-            matched, version, confidence = match(tech_data['url'], response.url)
-            if matched and update_entry(tech_name, version, confidence):
-                detected = True
-
-        if not detected and scan_type != 'fast' and 'dns' in tech_data:
-            matched, version, confidence = match_dict(tech_data['dns'], dns)
-            if matched and update_entry(tech_name, version, confidence):
-                detected = True
-
-        if not detected and scan_type != 'fast' and 'robots' in tech_data:
-            matched, version, confidence = match(tech_data['robots'], robots)
-            if matched and update_entry(tech_name, version, confidence):
-                detected = True
-
-    new_result = result.copy()
-    for detected in result.keys():
-        if 'implies' in tech_db[detected]:
-            implies = tech_db[detected]['implies']
-            if isinstance(implies, list):
-                for implied in implies:
-                    if implied not in new_result:
-                        new_result[implied] = {'version': '', 'confidence': 100}
-            else:
-                if implies not in new_result:
-                    new_result[implies] = {'version': '', 'confidence': 100}
-
-    return create_result(new_result)
+    return {
+        "certIssuer": auxiliary["certIssuer"],
+        "cookies": cookies,
+        "css": css_sources,
+        "dns": auxiliary["dns"],
+        "dom": soup,
+        "headers": response.headers,
+        "html": response.text,
+        "js": [],
+        "meta": meta,
+        "probes": auxiliary["probes"],
+        "robots": auxiliary["robots"],
+        "scriptSrc": script_sources,
+        "scripts": scripts,
+        "text": soup.get_text(" ", strip=True),
+        "url": response.url,
+        "xhr": [],
+        "_truncations": asset_budget.truncations,
+    }
 
 
-def http_scan(url, scan_type, cookie=None):
-    response = get_response(url, cookie)
-    if response:
-        return analyze_from_response(response, scan_type)
-    return {}
+def collect_static_evidence(
+    response,
+    *,
+    cookie=None,
+    timeout=30,
+    deadline=None,
+    asset_workers=None,
+    response_fetcher=get_response,
+):
+    if deadline is None:
+        deadline = time.monotonic() + timeout
+    asset_workers = asset_worker_count(asset_workers)
+    asset_budget = AssetBudget(COMPLETE_PROBE_COUNT_LIMIT)
+    evidence = _collect_auxiliary_evidence(
+        response,
+        "complete",
+        cookie,
+        deadline,
+        asset_workers,
+        response_fetcher,
+        asset_budget,
+    )
+    evidence["_truncations"] = asset_budget.truncations
+    return evidence
+
+
+def _stable_digest(value):
+    payload = json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    ).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _raw_detection(technology, channel, pattern, evidence_sha256, candidate):
+    matched, version, confidence = candidate
+    if not matched or confidence <= 0:
+        return None
+    return RawDetection(
+        technology=technology,
+        channel=channel,
+        source_key=_stable_digest(pattern),
+        evidence_sha256=evidence_sha256,
+        version=version or "",
+        confidence=min(int(confidence), 100),
+    )
+
+
+def collect_raw_detections(evidence, owner=None):
+    if owner is not None and not isinstance(owner, ChannelOwner):
+        raise TypeError("owner must be a ChannelOwner or None")
+    selected = {
+        channel
+        for channel in DETECTION_FIELDS
+        if owner is None or CHANNEL_REGISTRY[channel].owner is owner
+    }
+    detections = []
+
+    for channel in sorted(selected):
+        evidence_key = "probes" if channel == "probe" else channel
+        value = evidence.get(evidence_key)
+        if not value and channel != "dom":
+            continue
+        evidence_sha256 = _stable_digest(value)
+
+        if channel == "dom":
+            for technology, pattern in DETECTOR_PLAN[channel]:
+                detection = _raw_detection(
+                    technology,
+                    channel,
+                    pattern,
+                    evidence_sha256,
+                    match_dom(pattern, value),
+                )
+                if detection is not None:
+                    detections.append(detection)
+            continue
+
+        if channel in DICT_PATTERN_FIELDS:
+            for technology, pattern in DETECTOR_PLAN[channel]:
+                detection = _raw_detection(
+                    technology,
+                    channel,
+                    pattern,
+                    evidence_sha256,
+                    match_dict(
+                        pattern,
+                        value,
+                        case_insensitive_keys=True,
+                    ),
+                )
+                if detection is not None:
+                    detections.append(detection)
+            continue
+
+        if channel == "probe":
+            for technology, probes in DETECTOR_PLAN[channel]:
+                aggregate = (False, "", 0)
+                for path, pattern in probes.items():
+                    probe_ok, probe_text = value.get(path, (False, ""))
+                    if not probe_ok or (not probe_text and pattern != ""):
+                        continue
+                    candidate = (
+                        (True, "", 100)
+                        if pattern == "" and probe_text
+                        else match(pattern, probe_text)
+                    )
+                    aggregate = combine_matches(aggregate, candidate)
+                detection = _raw_detection(
+                    technology,
+                    channel,
+                    probes,
+                    evidence_sha256,
+                    aggregate,
+                )
+                if detection is not None:
+                    detections.append(detection)
+            continue
+
+        for technology, pattern in DETECTOR_PLAN[channel]:
+            detection = _raw_detection(
+                technology,
+                channel,
+                pattern,
+                evidence_sha256,
+                match(pattern, value),
+            )
+            if detection is not None:
+                detections.append(detection)
+
+    return tuple(
+        sorted(
+            detections,
+            key=lambda item: (
+                item.technology,
+                item.channel,
+                item.source_key,
+            ),
+        )
+    )
+
+
+def analyze_static_stage(
+    response,
+    scan_type="complete",
+    cookie=None,
+    timeout=30,
+    deadline=None,
+    asset_workers=None,
+    regex_pool=None,
+    regex_timeout=None,
+    response_fetcher=get_response,
+):
+    if regex_pool is None:
+        prepare_matchers()
+    if scan_type == "complete":
+        evidence = collect_static_evidence(
+            response,
+            cookie=cookie,
+            timeout=timeout,
+            deadline=deadline,
+            asset_workers=asset_workers,
+            response_fetcher=response_fetcher,
+        )
+    else:
+        evidence = collect_evidence(
+            response,
+            scan_type,
+            cookie=cookie,
+            timeout=timeout,
+            deadline=deadline,
+            asset_workers=asset_workers,
+            response_fetcher=response_fetcher,
+        )
+    worker_limits = {}
+    error_codes = ()
+    try:
+        detections = (
+            regex_pool.run(
+                collect_raw_detections,
+                evidence,
+                ChannelOwner.STATIC,
+                timeout=regex_timeout or timeout,
+            )
+            if regex_pool is not None
+            else collect_raw_detections(evidence, owner=ChannelOwner.STATIC)
+        )
+    except RegexTimeoutError:
+        detections = ()
+        error_codes = (FailureCode.SCAN_TIMEOUT,)
+        worker_limits = {
+            channel: (EvidenceLimit.TIMER, EvidenceLimit.WORKER)
+            for channel, registration in CHANNEL_REGISTRY.items()
+            if registration.owner is ChannelOwner.STATIC
+        }
+    except RegexWorkerError:
+        detections = ()
+        error_codes = (FailureCode.WORKER_FAILURE,)
+        worker_limits = {
+            channel: (EvidenceLimit.WORKER,)
+            for channel, registration in CHANNEL_REGISTRY.items()
+            if registration.owner is ChannelOwner.STATIC
+        }
+    truncation_limits = dict(evidence["_truncations"])
+    transport_limits = tuple(getattr(response_fetcher, "limits", ()))
+    if transport_limits:
+        for channel, registration in CHANNEL_REGISTRY.items():
+            if registration.owner is ChannelOwner.STATIC:
+                truncation_limits[channel] = tuple(
+                    dict.fromkeys((*truncation_limits.get(channel, ()), *transport_limits))
+                )
+    for channel, limits in worker_limits.items():
+        truncation_limits[channel] = tuple(
+            dict.fromkeys((*truncation_limits.get(channel, ()), *limits))
+        )
+    truncations = tuple(
+        EvidenceTruncation(channel=channel, limits=limits)
+        for channel, limits in truncation_limits.items()
+        if CHANNEL_REGISTRY[channel].owner is ChannelOwner.STATIC
+    )
+    return StageEvidence(
+        name=StageName.STATIC,
+        status=stage_status(detections, truncations),
+        response_identity=ResponseIdentity(
+            effective_url=response.url,
+            http_status=response.status_code,
+            content_sha256=hashlib.sha256(response.content).hexdigest(),
+        ),
+        detections=detections,
+        error_codes=error_codes,
+        truncations=truncations,
+    )
+
+
+def analyze_from_response(
+    response,
+    scan_type,
+    cookie=None,
+    timeout=30,
+    deadline=None,
+    asset_workers=None,
+):
+    prepare_matchers()
+    evidence = collect_evidence(
+        response,
+        scan_type,
+        cookie=cookie,
+        timeout=timeout,
+        deadline=deadline,
+        asset_workers=asset_workers,
+    )
+
+    return {
+        technology.name: {
+            "version": technology.version,
+            "confidence": technology.confidence,
+            "categories": list(technology.categories),
+            "groups": list(technology.groups),
+        }
+        for technology in resolve_raw_detections(collect_raw_detections(evidence))
+    }
+
+
+def http_scan(
+    url,
+    scan_type,
+    cookie=None,
+    timeout=30,
+    asset_workers=None,
+):
+    deadline = time.monotonic() + timeout
+    response = get_response(url, cookie, timeout=timeout)
+    if response is not None:
+        return analyze_from_response(
+            response,
+            scan_type,
+            cookie=cookie,
+            timeout=timeout,
+            deadline=deadline,
+            asset_workers=asset_workers,
+        )
+
+    raise ScanRequestError(f"Unable to fetch {url}")

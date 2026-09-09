@@ -1,10 +1,61 @@
 name: publish pypi package when a tag is created
 
-on: push
+on:
+  push:
+    tags:
+      - "v*"
 
 jobs:
+  verify:
+    name: Verify release
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+        cache: pip
+    - name: Install package and test dependencies
+      run: python3 -m pip install --upgrade --editable . pytest pytest-cov ruff
+    - name: Verify tag matches package version
+      run: test "v$(python3 -c 'import wappalyzer; print(wappalyzer.__version__)')" = "$GITHUB_REF_NAME"
+    - name: Install Chromium
+      run: python3 -m playwright install --with-deps chromium
+    - name: Run static checks
+      run: |
+        ruff check .
+        ruff format --check .
+    - name: Run complete test suite
+      run: timeout 180 pytest --cov --cov-fail-under=85
+      env:
+        RUN_BROWSER_TESTS: "1"
+    - name: Enforce complete orchestration statement and branch coverage
+      run: >-
+        python3 -m coverage report
+        --fail-under=100
+        --no-skip-covered
+        -m
+        wappalyzer/__main__.py
+        wappalyzer/core/direct_requester.py
+        wappalyzer/core/regex_workers.py
+        wappalyzer/core/transport.py
+        wappalyzer/direct.py
+        wappalyzer/discovery.py
+        wappalyzer/engine.py
+        wappalyzer/evidence.py
+        wappalyzer/evidence_limits.py
+        wappalyzer/models.py
+        wappalyzer/output.py
+        wappalyzer/pipeline.py
+        wappalyzer/resources.py
+        wappalyzer/runstore.py
+        wappalyzer/targets.py
+
   build:
     name: Build distribution 📦
+    needs:
+    - verify
     runs-on: ubuntu-latest
 
     steps:

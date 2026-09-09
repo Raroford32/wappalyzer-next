@@ -3366,10 +3366,10 @@
         ],
         "description": "AiSpeed is a shopify app focused on improving site speed.",
         "icon": "AiSpeed.png",
-        "implies": "Shopify",
         "js": {
             "aispeed_init": ""
         },
+        "requires": "Shopify",
         "scriptSrc": "aispeed\\.js",
         "website": "https://apps.shopify.com/aispeed"
     },
@@ -6699,7 +6699,6 @@
         ],
         "description": "Argento is an optimized and a responsive Magento template designed to enhance website performance and improve user experience.",
         "icon": "Argento.svg",
-        "implies": "Magento",
         "js": {
             "Argento": ""
         },
@@ -6707,6 +6706,7 @@
             "low",
             "recurring"
         ],
+        "requires": "Magento",
         "saas": true,
         "website": "https://argentotheme.com"
     },
@@ -8054,7 +8054,6 @@
         "description": "Autoketing Product Reviews is an application that allows shop owners to manage the product review section on their website.",
         "icon": "Autoketing.svg",
         "implies": [
-            "Shopify",
             "Autoketing"
         ],
         "js": {
@@ -8065,6 +8064,7 @@
             "low",
             "recurring"
         ],
+        "requires": "Shopify",
         "website": "https://apps.shopify.com/product-reviews-autoketing"
     },
     "Automabots": {
@@ -9986,7 +9986,6 @@
         ],
         "description": "AfterSell is a Shopify app by Beam which helps brands create post purchase offers.",
         "icon": "AfterSell.svg",
-        "implies": "Shopify",
         "js": {
             "aftersell.hooks": ""
         },
@@ -9995,6 +9994,7 @@
             "recurring",
             "low"
         ],
+        "requires": "Shopify",
         "saas": true,
         "scriptSrc": "\\.aftersell\\.app/",
         "website": "https://www.aftersell.com"
@@ -10016,7 +10016,6 @@
         ],
         "description": "OutSell is a Shopify app by Beam. Frequently Bought Together, Discounted Upsell, Also Bought.",
         "icon": "Beam.svg",
-        "implies": "Shopify",
         "js": {
             "outsellAiRecommendationsIsEnabled": "",
             "outsellApp": ""
@@ -10024,6 +10023,7 @@
         "pricing": [
             "freemium"
         ],
+        "requires": "Shopify",
         "saas": true,
         "scriptSrc": "//outsellapp\\.com/",
         "website": "https://apps.shopify.com/outsell"
@@ -10415,7 +10415,6 @@
         ],
         "description": "Better Price is a Shopify app which provide coupons to real leads only when discounted price is requested build by Architechpro.",
         "icon": "Better Price.png",
-        "implies": "Shopify",
         "js": {
             "fc_metafield_betterprice.betterpricesuccess": ""
         },
@@ -10423,6 +10422,7 @@
             "low",
             "recurring"
         ],
+        "requires": "Shopify",
         "saas": true,
         "scriptSrc": "/shopify-apps//js/betterprice/betterprice\\.js",
         "website": "https://apps.shopify.com/better-price"
@@ -11001,6 +11001,46 @@
         ],
         "saas": true,
         "website": "https://www.bisup.com"
+    },
+    "Bit Assist": {
+        "cats": [
+            5
+        ],
+        "description": "Bit Assist is a customer-support widget for embedding messaging channels, contact forms, FAQs, and third-party live-chat services on websites.",
+        "icon": "Bit Assist.svg",
+        "js": {
+            "bit_assist_.api.base": "(?:^|[=/])bit-assist/v1$"
+        },
+        "oss": true,
+        "pricing": [
+            "low",
+            "freemium",
+            "onetime",
+            "recurring"
+        ],
+        "scriptSrc": [
+            "/wp-content/plugins/bit-assist/iframe/bit-assist\\.js(?:\\?ver=(\\d+(?:\\.\\d+)+))?\\;version:\\1",
+            "bit-assist-widget-script-JAVASCRIPT-ASYNC"
+        ],
+        "website": "https://bitassist.co"
+    },
+    "Bit Form": {
+        "cats": [
+            110
+        ],
+        "description": "Bit Form is an open-source WordPress form builder plugin for creating contact, payment, multi-step, conversational, and calculator forms.",
+        "dom": "form[id^='form-bitforms_'].bf-form",
+        "icon": "Bit Form.svg",
+        "oss": true,
+        "pricing": [
+            "low",
+            "freemium",
+            "onetime",
+            "recurring"
+        ],
+        "requires": "WordPress",
+        "scriptSrc": "/wp-content/uploads/bitforms/form-scripts/\\d+/bitform-js-\\d+\\.js",
+        "website": "https://bit-form.com"
     },
     "BitPay": {
         "cats": [
@@ -11959,7 +11999,6 @@
         "description": "Bold Brain help customers discover more products and add more to their cart with dynamic recommendations for Shopify and use advanced analytics.",
         "icon": "Bold.svg",
         "implies": [
-            "Shopify",
             "Bold Commerce"
         ],
         "js": {
@@ -11970,6 +12009,7 @@
             "low",
             "recurring"
         ],
+        "requires": "Shopify",
         "saas": true,
         "scriptSrc": "brain-assets\\.boldapps\\.net/",
         "website": "https://boldcommerce.com/bold-brain"
@@ -11981,7 +12021,6 @@
         "description": "Bold Bundles Shopify app is designed to present recommended product widgets to cross-sell your products.",
         "icon": "Bold.svg",
         "implies": [
-            "Shopify",
             "Bold Commerce"
         ],
         "js": {
@@ -11991,6 +12030,7 @@
             "low",
             "recurring"
         ],
+        "requires": "Shopify",
         "saas": true,
         "scriptSrc": "bundles\\.boldapps\\.net/",
         "website": "https://boldcommerce.com/bundles"
@@ -12021,7 +12061,6 @@
         "description": "Bold Custom Pricing is an app that makes it easy to create a tiered pricing structure for customers.",
         "icon": "Bold.svg",
         "implies": [
-            "Shopify",
             "Bold Commerce"
         ],
         "js": {
@@ -12031,6 +12070,7 @@
             "low",
             "recurring"
         ],
+        "requires": "Shopify",
         "saas": true,
         "scriptSrc": "cp.\\.boldapps\\.net/",
         "website": "https://boldcommerce.com/custom-pricing"
@@ -12042,13 +12082,13 @@
         "description": "Bold Motivator motivate customers to spend more on a store with free shipping and gifts using a customizable banner that counts down how much more they have to buy.",
         "icon": "Bold.svg",
         "implies": [
-            "Shopify",
             "Bold Commerce"
         ],
         "pricing": [
             "recurring",
             "low"
         ],
+        "requires": "Shopify",
         "saas": true,
         "scriptSrc": "motivate\\.boldapps\\.net/",
         "website": "https://boldcommerce.com/motivator"
@@ -12087,7 +12127,6 @@
         "description": "Product Options is a Shopify app which allows customers to customize products with unlimited custom options built by Bold.",
         "icon": "Bold.svg",
         "implies": [
-            "Shopify",
             "Bold Commerce"
         ],
         "js": {
@@ -12097,6 +12136,7 @@
             "low",
             "recurring"
         ],
+        "requires": "Shopify",
         "saas": true,
         "scriptSrc": "option\\.boldapps\\.net/",
         "website": "https://boldcommerce.com/product-options"
@@ -12108,7 +12148,6 @@
         "description": "Bold Subscriptions provides, API-driven customization options to build and scale a subscription service that fits a business.",
         "icon": "Bold.svg",
         "implies": [
-            "Shopify",
             "Bold Commerce"
         ],
         "js": {
@@ -12120,6 +12159,7 @@
             "payg",
             "poa"
         ],
+        "requires": "Shopify",
         "saas": true,
         "scriptSrc": "sub\\.boldapps\\.net/",
         "website": "https://boldcommerce.com/shopify-subscription-app"
@@ -12130,7 +12170,6 @@
         ],
         "description": "Bold Themes is an and WordPress themes.",
         "icon": "Bold Themes.svg",
-        "implies": "WordPress",
         "js": {
             "BoldThemesURI": "",
             "boldthemes_theme_loaded": "^true$"
@@ -12138,6 +12177,7 @@
         "pricing": [
             "onetime"
         ],
+        "requires": "WordPress",
         "website": "https://bold-themes.com/wordpress-themes-plugins/"
     },
     "Bold Upsell": {
@@ -12147,7 +12187,6 @@
         "description": "Bold Upsell allows the substitution or attachment of products to the customers' carts.",
         "icon": "Bold.svg",
         "implies": [
-            "Shopify",
             "Bold Commerce"
         ],
         "js": {
@@ -12158,6 +12197,7 @@
             "recurring",
             "low"
         ],
+        "requires": "Shopify",
         "saas": true,
         "scriptSrc": "upsells\\.boldapps\\.net/",
         "website": "https://boldcommerce.com/upsell"
@@ -12336,7 +12376,6 @@
         ],
         "description": "BookThatApp is a Shopify appointment booking, product rental and class booking app.",
         "icon": "BookThatApp.svg",
-        "implies": "Shopify",
         "js": {
             "BookThatApp": ""
         },
@@ -12344,6 +12383,7 @@
             "low",
             "recurring"
         ],
+        "requires": "Shopify",
         "scriptSrc": "\\.bookthatapp\\.com/",
         "website": "https://www.bookthatapp.com"
     },
@@ -15344,7 +15384,8 @@
         "cpe": "cpe:2.3:a:caddyserver:caddy:*:*:*:*:*:*:*:*",
         "description": "Caddy is a Go-based web server known for its simplicity and automatic HTTPS features.",
         "headers": {
-            "Server": "Caddy"
+            "Server": "Caddy",
+            "Via": "(?:^|,\\s*)\\d+(?:\\.\\d+)?\\s+Caddy(?:\\s|,|$)"
         },
         "icon": "caddy.svg",
         "oss": true,
@@ -16058,11 +16099,11 @@
         ],
         "description": "Cartly Abandoned Cart Recovery by CareCart is a service that helps ecommerce businesses recover lost sales by sending automated reminders to customers who abandon their shopping carts.",
         "icon": "CareCart.svg",
-        "implies": "Shopify",
         "pricing": [
             "low",
             "recurring"
         ],
+        "requires": "Shopify",
         "saas": true,
         "scriptSrc": "app\\.carecart\\.io/api/abandoned-cart/",
         "website": "https://carecart.io/cartly-abandoned-cart-recovery/"
@@ -16074,10 +16115,10 @@
         ],
         "description": "CareCart Sales Pop Up is a stock countdown timer, recent sales notifications, live sales pop up widget.",
         "icon": "CareCart.svg",
-        "implies": "Shopify",
         "pricing": [
             "freemium"
         ],
+        "requires": "Shopify",
         "saas": true,
         "scriptSrc": "sales-pop\\.carecart\\.io/",
         "website": "https://carecart.io/sales-pop-up-app"
@@ -16168,12 +16209,12 @@
         ],
         "description": "Carro connects participating Shopify stores together to enable cross-store selling or the ability for like-minded partners to directly sell each other products without the need for inventory, managing returns, or minimum order quantities.",
         "icon": "Carro.svg",
-        "implies": "Shopify",
         "pricing": [
             "freemium",
             "low",
             "recurring"
         ],
+        "requires": "Shopify",
         "saas": true,
         "scriptSrc": [
             "\\.getcarro\\.com/",
@@ -16256,8 +16297,8 @@
         ],
         "description": "Cart.js is a very small open-source JavaScript library that makes the addition of Ajax cart functionality to your Shopify theme a breeze.",
         "icon": "Cart.js.png",
-        "implies": "Shopify",
         "oss": true,
+        "requires": "Shopify",
         "scriptSrc": "(?:shopify-cartjs/([\\d\\.]+)|assets)/rivets-cart\\.min\\.js\\;version:\\1",
         "website": "https://cartjs.org"
     },
@@ -16336,7 +16377,6 @@
         ],
         "description": "CartPops is a conversion-optimized AJAX fly-out cart solution for WooCommerce that replaces the traditional cart page and is compatible with any theme.",
         "icon": "CartPops.svg",
-        "implies": "WooCommerce",
         "js": {
             "CartPops.drawer": "",
             "CartPopsConfig": ""
@@ -16345,7 +16385,7 @@
             "low",
             "recurring"
         ],
-        "requires": "WordPress",
+        "requires": "WooCommerce",
         "saas": true,
         "website": "https://cartpops.com"
     },
@@ -20063,11 +20103,11 @@
         ],
         "description": "Coin Currency Converter is an automatic currency conversion app for Shopify.",
         "icon": "Coin Currency Converter.svg",
-        "implies": "Shopify",
         "pricing": [
             "low",
             "recurring"
         ],
+        "requires": "Shopify",
         "saas": true,
         "scriptSrc": "/apps/coin/coin\\.js.+\\.myshopify\\.com",
         "website": "https://apps.shopify.com/coin"
@@ -22640,13 +22680,13 @@
         ],
         "description": "Cozy AntiTheft helps you to protect a store content, images and texts from being stolen with a few simple clicks.",
         "icon": "Cozy AntiTheft.svg",
-        "implies": "Shopify",
         "js": {
             "cozyEcoAdnsUa": ""
         },
         "pricing": [
             "freemium"
         ],
+        "requires": "Shopify",
         "saas": true,
         "scriptSrc": "cdncozyantitheft\\.addons\\.business/",
         "website": "https://apps.shopify.com/cozy-antitheft-for-images-and-more"
@@ -23038,7 +23078,6 @@
         "description": "Cross Sell provide recommendations solution for Shopify based sites.",
         "icon": "CrossSell.svg",
         "implies": [
-            "Shopify",
             "Cart Functionality"
         ],
         "pricing": [
@@ -23046,6 +23085,7 @@
             "low",
             "recurring"
         ],
+        "requires": "Shopify",
         "saas": true,
         "scriptSrc": [
             "load\\.csell\\.co"
@@ -23368,14 +23408,13 @@
             "a[href*='cusrev.com/'][href*='/reviews/']"
         ],
         "icon": "CusRev.png",
-        "implies": "WooCommerce",
         "oss": true,
         "pricing": [
             "low",
             "freemium",
             "recurring"
         ],
-        "requires": "WordPress",
+        "requires": "WooCommerce",
         "saas": true,
         "scriptSrc": "/wp-content/plugins/customer-reviews-woocommerce/.+\\.js(?:\\?ver=(\\d+(?:\\.\\d+)+))?\\;version:\\1",
         "website": "https://www.cusrev.com"
@@ -25868,7 +25907,6 @@
         ],
         "description": "Digismoothie Candy Rack is an upsell app for Shopify which allow merchants to offer custom services or bundle products.",
         "icon": "Digismoothie.svg",
-        "implies": "Shopify",
         "js": {
             "CANDYRACK_DOCUMENT_LISTENER": "",
             "candyrackEnableDebug": ""
@@ -25877,6 +25915,7 @@
             "low",
             "recurring"
         ],
+        "requires": "Shopify",
         "saas": true,
         "website": "https://www.digismoothie.com/apps/candy-rack"
     },
@@ -26393,6 +26432,16 @@
         "saas": true,
         "scriptSrc": "dockethosting\\.com/",
         "website": "https://www.yourdocket.com"
+    },
+    "Dockview": {
+        "cats": [
+            66
+        ],
+        "description": "Dockview is a JavaScript layout manager for building dockable panels, tabs, grids, and split views in web applications.",
+        "dom": ".dv-grid-view.dv-dockview",
+        "icon": "Dockview.svg",
+        "oss": true,
+        "website": "https://dockview.dev/"
     },
     "Dockvine": {
         "cats": [
@@ -27435,8 +27484,8 @@
         "dom": "aside#cart-offcanvas, form.commerce-order-item-add-to-cart-form,form.commerce-add-to-cart",
         "html": "<[^>]+(?:id=\"block[_-]commerce[_-]cart[_-]cart|class=\"commerce[_-]product[_-]field)",
         "icon": "Drupal Commerce.svg",
-        "implies": "Drupal",
         "oss": true,
+        "requires": "Drupal",
         "scriptSrc": [
             "/modules/(?:contrib/)?commerce/js/conditions\\.js\\;confidence:50",
             "/profiles/commerce_kickstart/modules/contrib/commerce/modules/checkout/commerce_checkout\\.js\\;confidence:50",
@@ -28151,11 +28200,11 @@
         ],
         "description": "Easy Hide PayPal hides PayPal button from product page, cart and checkout but keep PayPal as payment option in checkout.",
         "icon": "Easy Hide PayPal.svg",
-        "implies": "Shopify",
         "pricing": [
             "low",
             "recurring"
         ],
+        "requires": "Shopify",
         "saas": true,
         "scriptSrc": "easyhide\\.herculesapps\\.com/",
         "website": "https://apps.shopify.com/easyhide"
@@ -28186,12 +28235,12 @@
         ],
         "description": "Easy Redirects is a Shopify app built by Eastside, and part of the best Shopify Apps collection.",
         "icon": "Easy Redirects.svg",
-        "implies": "Shopify",
         "pricing": [
             "freemium",
             "low",
             "recurring"
         ],
+        "requires": "Shopify",
         "saas": true,
         "scriptSrc": "easy-redirects\\..+/redirect-app\\.js",
         "website": "https://apps.shopify.com/easyredirects"
@@ -29942,12 +29991,12 @@
         ],
         "description": "Enlistly tracks referral orders in realtime.",
         "icon": "Enlistly.svg",
-        "implies": "Shopify",
         "pricing": [
             "freemium",
             "low",
             "recurring"
         ],
+        "requires": "Shopify",
         "scriptSrc": "cdn\\.enlistly\\.com/",
         "website": "https://enlistly.com"
     },
@@ -30355,10 +30404,10 @@
         ],
         "description": "EraofEcom MTL is a Shopify pop up app that enables you to catch a website visitors.",
         "icon": "EraofEcom.svg",
-        "implies": "Shopify",
         "pricing": [
             "poa"
         ],
+        "requires": "Shopify",
         "saas": true,
         "scriptSrc": "mtl\\.eraofecom\\.org",
         "website": "https://eraofecom.org/collections/tech/products/milk-the-leads"
@@ -30370,7 +30419,6 @@
         "description": "EraofEcom WinAds is a Facebook pixel app for Shopify.",
         "dom": "link[href*='winads.eraofecom.org']",
         "icon": "EraofEcom.svg",
-        "implies": "Shopify",
         "js": {
             "win_ads.baseURL": "winads\\.eraofecom\\.org"
         },
@@ -30378,6 +30426,7 @@
             "low",
             "recurring"
         ],
+        "requires": "Shopify",
         "saas": true,
         "website": "https://eraofecom.org/collections/tech/products/win-ads-manager"
     },
@@ -31003,7 +31052,6 @@
         ],
         "description": "Exemptify allows you to conduct proper EU B2B transactions by validating EU VAT IDs.",
         "icon": "Exemptify.png",
-        "implies": "Shopify",
         "js": {
             "ExemptifyTriggerUpdate": "",
             "m4u_ex_vat_postfix_txt": ""
@@ -31012,6 +31060,7 @@
             "low",
             "recurring"
         ],
+        "requires": "Shopify",
         "saas": true,
         "scriptSrc": "\\.modules4u\\.biz/shopify/exemptify",
         "website": "https://modules4u.biz/exemptify"
@@ -31682,10 +31731,10 @@
         ],
         "description": "eShopCRM is an ecommerce CRM for Shopify.",
         "icon": "eShopCRM.svg",
-        "implies": "Shopify",
         "pricing": [
             "poa"
         ],
+        "requires": "Shopify",
         "saas": true,
         "scriptSrc": "eshopcrm\\.com/",
         "website": "https://eshopcrm.com"
@@ -32971,7 +33020,6 @@
         "description": "Fera Product Reviews App is a product review and social proof app for Shopify.",
         "icon": "Fera.svg",
         "implies": [
-            "Shopify",
             "Fera"
         ],
         "js": {
@@ -32982,6 +33030,7 @@
             "freemium",
             "recurring"
         ],
+        "requires": "Shopify",
         "saas": true,
         "website": "https://apps.shopify.com/fera"
     },
@@ -35757,6 +35806,23 @@
         ],
         "website": "https://www.france-express.com"
     },
+    "FrankenPHP": {
+        "cats": [
+            22
+        ],
+        "cpe": "cpe:2.3:a:php:frankenphp:*:*:*:*:*:*:*:*",
+        "description": "FrankenPHP is an application server for PHP built on top of the Caddy web server.",
+        "headers": {
+            "Server": "FrankenPHP"
+        },
+        "icon": "FrankenPHP.svg",
+        "implies": [
+            "Caddy",
+            "PHP"
+        ],
+        "oss": true,
+        "website": "https://frankenphp.dev"
+    },
     "Frappe": {
         "cats": [
             18
@@ -37494,7 +37560,6 @@
         ],
         "description": "GemPages is a Shopify landing page buidler that empowers SMEs, agency, and freelancers to build their brands and sell online.",
         "icon": "GemPages.svg",
-        "implies": "Shopify",
         "js": {
             "GEMSTORE": "",
             "GEMVENDOR": ""
@@ -37503,6 +37568,7 @@
             "low",
             "recurring"
         ],
+        "requires": "Shopify",
         "saas": true,
         "scriptSrc": "/files/gempagev\\d+\\.js",
         "website": "https://gempages.net"
@@ -37710,13 +37776,13 @@
         ],
         "description": "Genlook Virtual try-on is an AI-powered virtual fitting room app for Shopify stores.",
         "icon": "Genlook.svg",
-        "implies": "Shopify",
         "pricing": [
             "freemium",
             "low",
             "recurring",
             "payg"
         ],
+        "requires": "Shopify",
         "saas": true,
         "scriptSrc": "cdn\\.shopify\\.com/extensions/[^/]+/genlook-[^/]+/assets/",
         "website": "https://genlook.app"
@@ -38810,12 +38876,12 @@
         ],
         "description": "Also Bought is a conversion Shopify app by Globo.",
         "icon": "Globo apps.svg",
-        "implies": "Shopify",
         "pricing": [
             "freemium",
             "low",
             "recurring"
         ],
+        "requires": "Shopify",
         "saas": true,
         "scriptSrc": "assets/globo\\.alsobought\\.js",
         "website": "https://apps.shopify.com/globo-related-products"
@@ -38826,10 +38892,10 @@
         ],
         "description": "Globo Color Swatch app gives you a tool to display product variants on both collection page, homepage and product page creatively as a means to enhance customers' experience and stimulate them to purchase.",
         "icon": "Globo apps.svg",
-        "implies": "Shopify",
         "pricing": [
             "freemium"
         ],
+        "requires": "Shopify",
         "saas": true,
         "scriptSrc": "assets/globo\\.swatch\\.data\\.js",
         "website": "https://apps.shopify.com/globo-related-products"
@@ -38841,12 +38907,12 @@
         ],
         "description": "Form Builder is a Shopify form builder app for contact form built by Globo.",
         "icon": "Globo apps.svg",
-        "implies": "Shopify",
         "pricing": [
             "freemium",
             "low",
             "recurring"
         ],
+        "requires": "Shopify",
         "saas": true,
         "scriptSrc": "/assets/globo\\.formbuilder\\.init\\.js",
         "website": "https://apps.shopify.com/form-builder-contact-form"
@@ -38857,7 +38923,6 @@
         ],
         "description": "Globo Pre-Order is a Shopify app for building pre-order functionality on Shopify stores.",
         "icon": "Globo apps.svg",
-        "implies": "Shopify",
         "js": {
             "GloboPreorderParams": ""
         },
@@ -38866,6 +38931,7 @@
             "low",
             "recurring"
         ],
+        "requires": "Shopify",
         "saas": true,
         "website": "https://apps.shopify.com/pre-order-pro"
     },
@@ -40145,7 +40211,6 @@
         ],
         "description": "Govalo is a software startup company that builds a Shopify app.",
         "icon": "Govalo.svg",
-        "implies": "Shopify",
         "js": {
             "Govalo.meta": ""
         },
@@ -40155,6 +40220,7 @@
             "mid",
             "recurring"
         ],
+        "requires": "Shopify",
         "saas": true,
         "scriptSrc": "cdn\\.shopify\\.com/extensions/.+/([\\d\\.]+)/assets/govalo\\.min\\.js\\;version:\\1",
         "website": "https://govalo.com"
@@ -41230,10 +41296,10 @@
             1
         ],
         "icon": "govCMS.svg",
-        "implies": "Drupal",
         "meta": {
             "generator": "Drupal ([\\d]+) \\(https?:\\/\\/drupal\\.org\\) \\+ (?:GovCMS|govCMS)(?: \\(https?:\\/\\/(?:www\\.)?govcms\\.gov\\.au\\))?\\;version:\\1"
         },
+        "requires": "Drupal",
         "website": "https://www.govcms.gov.au"
     },
     "gunicorn": {
@@ -42048,8 +42114,8 @@
         "description": "Helix Ultimate a free template framework for Joomla.",
         "dom": "header#sp-header, body.helix-ultimate",
         "icon": "HelixUltimate.svg",
-        "implies": "Joomla",
         "oss": true,
+        "requires": "Joomla",
         "website": "https://www.joomshaper.com/joomla-templates/helixultimate"
     },
     "HelixPay": {
@@ -42073,7 +42139,6 @@
         ],
         "description": "Helixo UFE is a lightweight Shopify upsell sales funnel app.",
         "icon": "Helixo.svg",
-        "implies": "Shopify",
         "js": {
             "ufe.funnelData": "",
             "ufeStore.cartTotal": ""
@@ -42083,6 +42148,7 @@
             "low",
             "recurring"
         ],
+        "requires": "Shopify",
         "saas": true,
         "website": "https://helixo.co/upsell-funnel-engine/"
     },
@@ -42448,12 +42514,12 @@
         ],
         "description": "Free Shipping Bar is a Shopify app built by Hextom.",
         "icon": "Hextom.png",
-        "implies": "Shopify",
         "pricing": [
             "freemium",
             "low",
             "recurring"
         ],
+        "requires": "Shopify",
         "saas": true,
         "scriptSrc": "\\.hextom\\.com/js/freeshippingbar\\.js",
         "website": "https://hextom.com/case_study/free-shipping-bar"
@@ -42464,7 +42530,6 @@
         ],
         "description": "Ultimate Sales Boost by Hextom is an app designed to help you drive more sales by creating a sense of urgency, scarcity and trust.",
         "icon": "Hextom.png",
-        "implies": "Shopify",
         "js": {
             "hextom_usb": "",
             "ht_usb.isLoaded": ""
@@ -42474,6 +42539,7 @@
             "low",
             "recurring"
         ],
+        "requires": "Shopify",
         "saas": true,
         "scriptSrc": "\\.hextom\\.com/js/ultimatesalesboost\\.js",
         "website": "https://hextom.com/case_study/ultimate-sales-boost"
@@ -43756,11 +43822,11 @@
         ],
         "description": "HulkApps Age Verification allow customers to certify their age before they land in a store.",
         "icon": "HulkApps.svg",
-        "implies": "Shopify",
         "pricing": [
             "low",
             "recurring"
         ],
+        "requires": "Shopify",
         "saas": true,
         "scriptSrc": "age-verification\\.hulkapps\\.com/",
         "website": "https://www.hulkapps.com/products/age-verification-shopify"
@@ -43773,12 +43839,12 @@
         ],
         "description": "HulkApps Form Builder is an application that creates customizable, job-specific forms for unit needs.",
         "icon": "HulkApps.svg",
-        "implies": "Shopify",
         "pricing": [
             "freemium",
             "low",
             "recurring"
         ],
+        "requires": "Shopify",
         "saas": true,
         "scriptSrc": "formbuilder\\.hulkapps\\.com/",
         "website": "https://www.hulkapps.com/products/form-builder-shopify"
@@ -43790,7 +43856,6 @@
         ],
         "description": "HulkApps GDPR/CCPA Compliance Manager is a consent management solution.",
         "icon": "HulkApps.svg",
-        "implies": "Shopify",
         "js": {
             "hulkSetCookie": ""
         },
@@ -43798,6 +43863,7 @@
             "low",
             "recurring"
         ],
+        "requires": "Shopify",
         "saas": true,
         "scriptSrc": "cookiebar\\.hulkapps\\.com/hulk_cookie_bar\\.js",
         "website": "https://www.hulkapps.com/products/gdpr-ccpa-cookie-manager-shopify-app"
@@ -43809,7 +43875,6 @@
         ],
         "description": "HulkApps Infinite Product Options is a unlimited custom options for products.",
         "icon": "HulkApps.svg",
-        "implies": "Shopify",
         "js": {
             "hulkapps.po_url": "productoption\\.hulkapps\\.com"
         },
@@ -43818,6 +43883,7 @@
             "low",
             "recurring"
         ],
+        "requires": "Shopify",
         "saas": true,
         "website": "https://www.hulkapps.com/products/infinite-product-options-shopify"
     },
@@ -43829,7 +43895,6 @@
         "description": "HulkApps Product Reviews is a customer product reviews app for building social proof for store.",
         "dom": "link[href*='reviews.hulkapps.com/']",
         "icon": "HulkApps.svg",
-        "implies": "Shopify",
         "js": {
             "hulkappsProductReview": "",
             "hulkappsReviews": ""
@@ -43839,6 +43904,7 @@
             "low",
             "recurring"
         ],
+        "requires": "Shopify",
         "saas": true,
         "website": "https://www.hulkapps.com/products/product-reviews-shopify"
     },
@@ -44092,7 +44158,6 @@
         "description": "Hyperspeed is the most advanced speed booster for Shopify.",
         "icon": "Hyperspeed.svg",
         "implies": [
-            "Shopify",
             "Instant.Page"
         ],
         "js": {
@@ -44102,6 +44167,7 @@
             "low",
             "recurring"
         ],
+        "requires": "Shopify",
         "saas": true,
         "scriptSrc": "cdn\\.shopify\\.com/.+/assets/hs-(?:instantload|lazysizes)\\.min\\.js",
         "website": "https://www.hyperspeed.me"
@@ -44525,6 +44591,23 @@
         "dom": "link[href*='.iconscout.com/'], img[src*='.iconscout.com/']",
         "icon": "IconScout.svg",
         "website": "https://iconscout.com"
+    },
+    "Iconify": {
+        "cats": [
+            59
+        ],
+        "description": "Iconify is an open-source icon framework that provides a common interface for rendering icons from multiple icon sets in web applications.",
+        "dom": [
+            "iconify-icon",
+            "[class~='iconify'][data-icon]"
+        ],
+        "icon": "Iconify.svg",
+        "oss": true,
+        "scriptSrc": [
+            "code\\.iconify\\.design/(?:iconify-icon/|\\d+/)([\\d.]+)/iconify(?:-icon)?\\.min\\.js\\;version:\\1",
+            "cdn\\.jsdelivr\\.net/npm/iconify-icon@([\\d.]+)/dist/iconify-icon\\.min\\.js\\;version:\\1"
+        ],
+        "website": "https://iconify.design/"
     },
     "Iconosquare": {
         "cats": [
@@ -45537,7 +45620,6 @@
         ],
         "description": "Inkybay is a Shopify product personalization app for configurable product options, live previews, and print-ready custom orders.",
         "icon": "Inkybay.svg",
-        "implies": "Shopify",
         "js": {
             "EFOLI_INKYBAY_SCRIPTTAG_JS_INIT": "",
             "runInkybayApp": ""
@@ -45546,6 +45628,7 @@
             "low",
             "recurring"
         ],
+        "requires": "Shopify",
         "saas": true,
         "scriptSrc": [
             "\\.inkybay\\.com/shopify/js/inkybay\\.js",
@@ -46847,12 +46930,12 @@
         ],
         "icon": "iPresta.svg",
         "implies": [
-            "PHP",
-            "PrestaShop"
+            "PHP"
         ],
         "meta": {
             "designer": "iPresta"
         },
+        "requires": "PrestaShop",
         "website": "https://ipresta.ir"
     },
     "iRaiser": {
@@ -47292,7 +47375,6 @@
         "cpe": "cpe:2.3:a:j2store:j2store:*:*:*:*:*:joomla\\!:*:*",
         "description": "J2Store is a Joomla shopping cart and ecommerce extension.",
         "icon": "j2store.svg",
-        "implies": "Joomla",
         "js": {
             "j2storeURL": ""
         },
@@ -47301,6 +47383,7 @@
             "freemium",
             "low"
         ],
+        "requires": "Joomla",
         "website": "https://www.j2store.org"
     },
     "JANet": {
@@ -48191,7 +48274,6 @@
         ],
         "description": "JoomShopping is an open-source ecommerce plugin for Joomla.",
         "icon": "JoomShopping.png",
-        "implies": "Joomla",
         "js": {
             "joomshoppingVideoHtml5": ""
         },
@@ -48199,6 +48281,7 @@
         "pricing": [
             "onetime"
         ],
+        "requires": "Joomla",
         "scriptSrc": "/components/com_jshopping/",
         "website": "https://www.webdesigner-profi.de/joomla-webdesign/joomla-shop"
     },
@@ -48432,7 +48515,7 @@
         ],
         "description": "Jumbo is a page speed optimizer app for Shopify based sites.",
         "icon": "Jumbo.svg",
-        "implies": "Shopify",
+        "requires": "Shopify",
         "scriptSrc": "mt\\.tryjumbo\\.com",
         "website": "https://www.tryjumbo.com/"
     },
@@ -48861,10 +48944,10 @@
         ],
         "description": "K2 is a content management extension for Joomla, developed by JoomlaWorks, that enhances Joomla's capabilities by providing features like rich content forms, nested categories, tags, comments, and more.",
         "icon": "K2.svg",
-        "implies": "Joomla",
         "js": {
             "K2RatingURL": ""
         },
+        "requires": "Joomla",
         "website": "https://getk2.org"
     },
     "K50": {
@@ -50045,7 +50128,6 @@
             "x-kinsta-cache": ""
         },
         "icon": "kinsta.svg",
-        "implies": "WordPress",
         "pricing": [
             "freemium",
             "low",
@@ -51338,11 +51420,14 @@
         "cats": [
             31
         ],
-        "description": "KuronekoServer CDN is a distributed content delivery network utilizing VPS and Cloudflare to enhance performance and reliability.",
-        "dom": "link[href*='cdn.krnk.org/']",
+        "description": "KuronekoServer CDN is a distributed content delivery network for KuronekoServer and its partners. It is not offered to the general public.",
+        "dom": "img[src*='cdn.krnk.org/'], link[href*='cdn.krnk.org/'], script[src*='cdn.krnk.org/']",
+        "headers": {
+            "X-Operated-By": "^KuronekoServer - CDN Server$",
+            "X-Powered-By": "^KuronekoServer CDN$"
+        },
         "icon": "KuronekoServerCDN.svg",
         "saas": true,
-        "scripts": "cdn\\.krnk\\.org/",
         "website": "https://cdn.krnk.org"
     },
     "Kustomer": {
@@ -51742,7 +51827,6 @@
         ],
         "description": "LangShop is an app for translating Shopify stores.",
         "icon": "LangShop.svg",
-        "implies": "Shopify",
         "js": {
             "LangShop": "",
             "LangShopConfig": "",
@@ -51753,6 +51837,7 @@
             "recurring",
             "freemium"
         ],
+        "requires": "Shopify",
         "saas": true,
         "scriptSrc": "\\.langshop\\.app/",
         "website": "https://langshop.io"
@@ -52021,12 +52106,12 @@
         ],
         "description": "LayoutHub is an easy page builder that helps merchants quickly set up an online store with any kind of page type by using our library of pre-designed layouts and blocks.",
         "icon": "LayoutHub.svg",
-        "implies": "Shopify",
         "pricing": [
             "freemium",
             "low",
             "recurring"
         ],
+        "requires": "Shopify",
         "saas": true,
         "scriptSrc": "app\\.layouthub\\.com/shopify/layouthub\\.js",
         "website": "https://layouthub.com"
@@ -52491,10 +52576,10 @@
         ],
         "description": "Leaflet is the price testing platform for Shopify.",
         "icon": "Leaflet platform.png",
-        "implies": "Shopify",
         "pricing": [
             "payg"
         ],
+        "requires": "Shopify",
         "saas": true,
         "scriptSrc": "scripts\\.leaflet\\.co/",
         "website": "https://join.leaflet.co"
@@ -53803,7 +53888,6 @@
         ],
         "description": "Littledata provides a connection between your Shopify site, marketing channels, and Google Analytics.",
         "icon": "Littledata.svg",
-        "implies": "Shopify",
         "js": {
             "LittledataLayer": "",
             "LittledataLayer.version": "v([\\d\\.]+)\\;version:\\1"
@@ -53812,6 +53896,7 @@
             "mid",
             "recurring"
         ],
+        "requires": "Shopify",
         "requiresCategory": 6,
         "saas": true,
         "website": "https://www.littledata.io"
@@ -54141,11 +54226,11 @@
         ],
         "description": "Livescale is a video platform that enables teams to transform content and ecommerce into a live shopping experience that reaches engages and monetizes audiences with LiveShopping.",
         "icon": "Livescale.svg",
-        "implies": "Shopify",
         "pricing": [
             "mid",
             "recurring"
         ],
+        "requires": "Shopify",
         "saas": true,
         "scriptSrc": "\\.livescale\\.tv/",
         "website": "https://www.livescale.tv"
@@ -54279,7 +54364,6 @@
         ],
         "description": "Locksmith is a shopify app for adding access control capability on shopify stores.",
         "icon": "Locksmith.svg",
-        "implies": "Shopify",
         "js": {
             "Locksmith": ""
         },
@@ -54287,6 +54371,7 @@
             "low",
             "recurring"
         ],
+        "requires": "Shopify",
         "saas": true,
         "website": "https://apps.shopify.com/locksmith"
     },
@@ -55803,6 +55888,22 @@
         "saas": true,
         "website": "https://www.magazord.com.br"
     },
+    "Mage Loyalty": {
+        "cats": [
+            84,
+            100
+        ],
+        "description": "Mage Loyalty is a Shopify app for loyalty programs, referrals, wishlists, customer accounts, and memberships.",
+        "icon": "Mage Loyalty.png",
+        "pricing": [
+            "mid",
+            "recurring"
+        ],
+        "requires": "Shopify",
+        "saas": true,
+        "scriptSrc": "cdn\\.shopify\\.com/extensions/[a-f\\d-]+/mage-loyalty-\\d+/assets/",
+        "website": "https://www.mageloyalty.com"
+    },
     "MageMail": {
         "cats": [
             75
@@ -55867,7 +55968,7 @@
         "scriptSrc": [
             "js/mage",
             "skin/frontend/(?:default|(enterprise))\\;version:\\1?1 (Enterprise):1 (Community)",
-            "skin/frontend/\\;confidence:50\\;version:\\1",
+            "skin/frontend/\\;confidence:50\\;version:1",
             "static/_requirejs\\;confidence:50\\;version:2"
         ],
         "website": "https://magento.com"
@@ -58005,11 +58106,11 @@
         "description": "MemberPress is a WordPress plugin for creating membership sites, selling subscriptions and courses, and restricting access to content.",
         "dom": "link[href*='/wp-content/plugins/memberpress'], script[src*='/wp-content/plugins/memberpress'], [class^='mepr-'], [class*=' mepr-'], [id^='mepr-'], [id^='mepr_']",
         "icon": "MemberPress.svg",
-        "implies": "WordPress",
         "pricing": [
             "low",
             "recurring"
         ],
+        "requires": "WordPress",
         "scriptSrc": "/wp-content/plugins/memberpress(?:[-/])",
         "website": "https://memberpress.com"
     },
@@ -59049,7 +59150,6 @@
         ],
         "description": "MinMaxify is an app that allows Shopify store owners to set minimum and maximum values for customer orders built by Intillium.",
         "icon": "MinMaxify.svg",
-        "implies": "Shopify",
         "js": {
             "minMaxify.checkLimits": "",
             "minMaxify.shop": ""
@@ -59058,6 +59158,7 @@
             "low",
             "recurring"
         ],
+        "requires": "Shopify",
         "saas": true,
         "website": "https://apps.shopify.com/order-limits-minmaxify"
     },
@@ -60082,13 +60183,12 @@
         "description": "Moneris is Canada\u2019s processor of Debit and credit card payments.",
         "icon": "Moneris.svg",
         "implies": [
-            "Moneris",
-            "WooCommerce"
+            "Moneris"
         ],
         "js": {
             "wc_moneris_hosted_tokenization_params": ""
         },
-        "requires": "WordPress",
+        "requires": "WooCommerce",
         "scriptSrc": "/wp-content/plugins/woocommerce-gateway-moneris/",
         "website": "https://wordpress.org/plugins/wc-moneris-payment-gateway"
     },
@@ -62189,11 +62289,11 @@
         ],
         "description": "Neat A/B Testing is a Shopify app built by NeatShift.",
         "icon": "Neat.png",
-        "implies": "Shopify",
         "pricing": [
             "mid",
             "recurring"
         ],
+        "requires": "Shopify",
         "saas": true,
         "scriptSrc": "cdn\\.neatab\\.com/",
         "website": "https://neatab.com"
@@ -63222,6 +63322,23 @@
             "generator": "NitroPack"
         },
         "website": "https://nitropack.io/"
+    },
+    "Nlet School": {
+        "cats": [
+            21
+        ],
+        "description": "Nlet School is a school management platform for admissions, attendance, fees, exams, transportation, and communication.",
+        "icon": "Nlet School.png",
+        "meta": {
+            "author": "^NLET(?: initiatives LLP)?$"
+        },
+        "pricing": [
+            "low",
+            "recurring"
+        ],
+        "saas": true,
+        "url": "^https?://[^./]+\\.nletschool\\.com(?:/|$)",
+        "website": "https://nletschool.com/"
     },
     "NoFraud": {
         "cats": [
@@ -64551,7 +64668,6 @@
             }
         },
         "icon": "Okendo.svg",
-        "implies": "Shopify",
         "js": {
             "okeReviewsWidgetOnInit": "",
             "okeWidgetControlInit": "",
@@ -64561,6 +64677,7 @@
             "low",
             "recurring"
         ],
+        "requires": "Shopify",
         "saas": true,
         "website": "https://www.okendo.io"
     },
@@ -66548,7 +66665,6 @@
         ],
         "description": "Order Deadline is an estimated delivery, countdown timer, shipping date Shopify app.",
         "icon": "Order Deadline.png",
-        "implies": "Shopify",
         "js": {
             "orderDeadlineAppByEESL": ""
         },
@@ -66556,6 +66672,7 @@
             "low",
             "recurring"
         ],
+        "requires": "Shopify",
         "saas": true,
         "website": "https://apps.shopify.com/order-deadline"
     },
@@ -66565,7 +66682,6 @@
         ],
         "description": "OrderLogic app allows you to define minimum and maximum product quantities for all products in your Shopify store.",
         "icon": "OrderLogic app.svg",
-        "implies": "Shopify",
         "js": {
             "OrderLogic.ALERTS_KEY": "",
             "OrderLogic.DEFAULT_MONEY_FORMAT": "",
@@ -66575,6 +66691,7 @@
             "low",
             "recurring"
         ],
+        "requires": "Shopify",
         "saas": true,
         "website": "https://apps.shopify.com/orderlogic"
     },
@@ -66673,7 +66790,6 @@
         ],
         "description": "Ordersify Product Alerts is a Shopify app which detects automatically product stock and send email alerts to contact immediately after your products are restocked.",
         "icon": "Ordersify.svg",
-        "implies": "Shopify",
         "js": {
             "ORDERSIFY_BIS.stockRemainingSetting": ""
         },
@@ -66682,6 +66798,7 @@
             "low",
             "recurring"
         ],
+        "requires": "Shopify",
         "saas": true,
         "scriptSrc": "cdn\\.ordersify\\.com/sdk/productalerts-shopify\\.js",
         "website": "https://ordersify.com/products/product-alerts"
@@ -67625,10 +67742,10 @@
         ],
         "description": "Packlink PRO is a multicarrier shipping solutions for ecommerce and marketplaces.",
         "icon": "Packlink.svg",
-        "implies": "Shopify",
         "pricing": [
             "payg"
         ],
+        "requires": "Shopify",
         "saas": true,
         "scriptSrc": "packlink-spf-pro\\.appspot\\.com/.+myshopify\\.com",
         "website": "https://apps.shopify.com/packlink-pro"
@@ -68914,6 +69031,25 @@
         "saas": true,
         "website": "https://www.paylocity.com"
     },
+    "PaymentForm.io": {
+        "cats": [
+            110
+        ],
+        "description": "PaymentForm.io is a form and checkout page builder for collecting payments, selling products, receiving donations, and registering event attendees.",
+        "icon": "PaymentForm.io.svg",
+        "meta": {
+            "generator": "^PaymentForm\\.io$"
+        },
+        "pricing": [
+            "low",
+            "freemium",
+            "recurring"
+        ],
+        "saas": true,
+        "scriptSrc": "(?:^|//)[^/]+\\.paymentform\\.io/payment-form-embed\\.js(?:[?#]|$)",
+        "url": "^https?://[^/]+\\.paymentform\\.io/",
+        "website": "https://paymentform.io"
+    },
     "Paymenter": {
         "cats": [
             1,
@@ -70039,7 +70175,6 @@
         ],
         "description": "PickyStory is the ecommerce conversion platform.",
         "icon": "PickyStory.png",
-        "implies": "Shopify",
         "js": {
             "pickystory.overrideStore": ""
         },
@@ -70047,6 +70182,7 @@
             "freemium",
             "payg"
         ],
+        "requires": "Shopify",
         "saas": true,
         "scriptSrc": "cdn\\.pickystory\\.com/",
         "website": "https://pickystory.com"
@@ -73327,11 +73463,11 @@
         ],
         "description": "Product Personalizer apps can help you to customize your products and offer a more personalized experience for customers.",
         "icon": "Product Personalizer.svg",
-        "implies": "Shopify",
         "pricing": [
             "low",
             "recurring"
         ],
+        "requires": "Shopify",
         "saas": true,
         "scriptSrc": "/product-personalizer/pplr_common\\.js",
         "website": "https://productpersonalizer.com"
@@ -73365,6 +73501,16 @@
         "saas": true,
         "scriptSrc": "widget\\.profeat\\.team/",
         "website": "https://profeat.team"
+    },
+    "Profile Builder": {
+        "cats": [
+            87
+        ],
+        "description": "Profile Builder is a WordPress plugin for creating registration, login, and edit-profile forms, managing user roles, and restricting content.",
+        "dom": "link[href*='/wp-content/plugins/profile-builder/']",
+        "oss": true,
+        "requires": "WordPress",
+        "website": "https://www.cozmoslabs.com/wordpress-profile-builder/"
     },
     "ProfilePress": {
         "cats": [
@@ -74520,13 +74666,13 @@
         "dom": "div.pushdaddy-chats",
         "icon": "PushDaddy.svg",
         "implies": [
-            "WhatsApp Business Chat",
-            "Shopify"
+            "WhatsApp Business Chat"
         ],
         "pricing": [
             "freemium",
             "payg"
         ],
+        "requires": "Shopify",
         "saas": true,
         "scriptSrc": "cdn\\.shopify\\.com/.+/pushdaddy_v([\\d\\.]+).*\\.js\\;version:\\1",
         "website": "https://apps.shopify.com/whatsapp-chat-for-support"
@@ -77271,13 +77417,13 @@
         ],
         "description": "ReConvert is a post-purchase upsell & thank you page.",
         "icon": "ReConvert.svg",
-        "implies": "Shopify",
         "pricing": [
             "low",
             "payg",
             "freemium",
             "recurring"
         ],
+        "requires": "Shopify",
         "saas": true,
         "scriptSrc": "\\.stilyoapps\\.com/reconvert/assets/js/store_reconvert_node\\.js",
         "website": "https://www.reconvert.io"
@@ -77862,11 +78008,11 @@
         ],
         "description": "Recomify is a 1-click install, cost-effective smart product recommendation engine.",
         "icon": "Recomify.svg",
-        "implies": "Shopify",
         "pricing": [
             "low",
             "recurring"
         ],
+        "requires": "Shopify",
         "saas": true,
         "scriptSrc": "app\\.recomify\\.com/",
         "website": "https://www.recomify.com"
@@ -77940,12 +78086,12 @@
         ],
         "description": "RecoverMyCart is a Shopify app for abandoned basket recovery.",
         "icon": "RecoverMyCart.png",
-        "implies": "Shopify",
         "pricing": [
             "low",
             "freemium",
             "recurring"
         ],
+        "requires": "Shopify",
         "saas": true,
         "scriptSrc": "cdn\\.recovermycart\\.com",
         "website": "https://app.recovermycart.com/"
@@ -79155,7 +79301,6 @@
         ],
         "description": "Reserve In-Store app will allow customers to reserve an item in a store online to come to pick it up or view the item before making the purchase.",
         "icon": "Reserve In-Store.svg",
-        "implies": "Shopify",
         "js": {
             "reserveInStore.version": "([\\d\\.]+)\\;version:\\1",
             "reserveInStoreJsUrl": "/reserveinstore\\.js.+\\.myshopify\\.com"
@@ -79164,6 +79309,7 @@
             "low",
             "recurring"
         ],
+        "requires": "Shopify",
         "saas": true,
         "website": "https://www.reserveinstore.com"
     },
@@ -81660,10 +81806,10 @@
         ],
         "description": "SOBI2 is an older version of the SOBI (Simple Open Business Index) directory extension for Joomla.",
         "icon": "Sobi.svg",
-        "implies": "Joomla",
         "js": {
             "sobi2Cats": ""
         },
+        "requires": "Joomla",
         "website": "https://www.sigsiu.net/sobi2.html"
     },
     "SOCi": {
@@ -82068,6 +82214,22 @@
             "payg"
         ],
         "website": "https://www.sakura.ad.jp"
+    },
+    "Salam": {
+        "cats": [
+            27
+        ],
+        "description": "Salam is an open-source, general-purpose systems programming language with a built-in domain-specific language for generating web interfaces.",
+        "headers": {
+            "Server": "^Salam(?:/([\\d.]+))?$\\;version:\\1",
+            "X-Powered-By": "^Salam(?:/([\\d.]+))?$\\;version:\\1"
+        },
+        "icon": "Salam.svg",
+        "meta": {
+            "generator": "^Salam$"
+        },
+        "oss": true,
+        "website": "https://salamlang.github.io/Salam/"
     },
     "SaleCycle": {
         "cats": [
@@ -82674,6 +82836,9 @@
                     "src": "",
                     "srcset": ""
                 }
+            },
+            "link[rel='dns-prefetch'][href^='https://cdn.sanity.io'],link[rel='preconnect'][href^='https://cdn.sanity.io']": {
+                "exists": ""
             }
         },
         "headers": {
@@ -83281,7 +83446,6 @@
         ],
         "description": "Seal Subscriptions is a Shopify subscriptions app, packed with lots of features, such as automated product swaps, interval changes, payment calendar, Quick Checkout Wizard, and more.",
         "icon": "Seal Subscriptions.svg",
-        "implies": "Shopify",
         "js": {
             "SealSubs.checkout": "",
             "sealsubscriptions_settings_updated": "",
@@ -83292,6 +83456,7 @@
             "low",
             "recurring"
         ],
+        "requires": "Shopify",
         "saas": true,
         "scriptSrc": "\\.sealsubscriptions\\.com/",
         "website": "https://www.sealsubscriptions.com"
@@ -83428,7 +83593,6 @@
         ],
         "description": "Secomapp is a trusted Shopify Expert providing services through Shopify Apps.",
         "icon": "Secomapp.svg",
-        "implies": "Shopify",
         "js": {
             "SECOMAPP": ""
         },
@@ -83437,6 +83601,7 @@
             "low",
             "recurring"
         ],
+        "requires": "Shopify",
         "saas": true,
         "scriptSrc": "cdn\\.secomapp\\.com/",
         "website": "https://www.secomapp.com"
@@ -83471,8 +83636,8 @@
         "description": "Sections.design Shopify App Optimization is a Shopify section written in liquid for the purpose of improving performance of Shopify stores by optimizing how Shopify app loads.",
         "dom": "div#shopify-section-app-optimization",
         "icon": "Sections-Design.png",
-        "implies": "Shopify",
         "oss": true,
+        "requires": "Shopify",
         "website": "https://github.com/mirceapiturca/Sections/tree/master/App%20Optimization"
     },
     "SecureMetrics": {
@@ -83855,7 +84020,6 @@
             }
         },
         "icon": "Sellacious.svg",
-        "implies": "Joomla",
         "js": {
             "SellaciousViewCartAIO": ""
         },
@@ -83865,6 +84029,7 @@
             "recurring",
             "freemium"
         ],
+        "requires": "Joomla",
         "saas": true,
         "website": "https://www.sellacious.com"
     },
@@ -84742,7 +84907,10 @@
             13
         ],
         "description": "Shakebug is a bug and crash reporting platform with session monitoring and product analytics for mobile and web applications.",
-        "dom": "#shakebug-root.sb-ignore",
+        "dom": [
+            "#shakebug-root.sb-ignore",
+            "#shakebug-root.shakebug-wrapper"
+        ],
         "pricing": [
             "freemium",
             "mid",
@@ -85143,11 +85311,11 @@
         ],
         "description": "ShipTection is the easiest way to offer shipping protection on your Shopify site.",
         "icon": "ShipTection.png",
-        "implies": "Shopify",
         "pricing": [
             "mid",
             "recurring"
         ],
+        "requires": "Shopify",
         "saas": true,
         "scriptSrc": "app\\.shiptection\\.com/",
         "website": "https://wamapps.io/pages/shiptection-protection"
@@ -85439,7 +85607,6 @@
         ],
         "description": "ShopPad Infinite Options allows you to create as many custom option fields for your product pages as you need.",
         "icon": "ShopPad.svg",
-        "implies": "Shopify",
         "js": {
             "Shoppad.apps.infiniteoptions": ""
         },
@@ -85447,6 +85614,7 @@
             "low",
             "recurring"
         ],
+        "requires": "Shopify",
         "website": "https://apps.shopify.com/custom-options"
     },
     "ShopSite": {
@@ -85575,7 +85743,6 @@
         ],
         "description": "Shopapps is a trusted Shopify Expert providing services through Shopify Apps.",
         "icon": "Shopapps.svg",
-        "implies": "Shopify",
         "js": {
             "iStockUrl": "iwish\\.myshopapps\\.com/",
             "iWishUrl": "iwish\\.myshopapps\\.com/"
@@ -85584,6 +85751,7 @@
             "low",
             "recurring"
         ],
+        "requires": "Shopify",
         "saas": true,
         "scriptSrc": "cdn\\.myshopapps\\.com/",
         "website": "https://www.shopapps.in"
@@ -85787,7 +85955,7 @@
         ],
         "description": "Shopify Chat is Shopify's native live chat function that allows you to have real-time conversations with customers visiting your Shopify store.",
         "icon": "Shopify.svg",
-        "implies": "Shopify",
+        "requires": "Shopify",
         "scriptSrc": [
             "cdn\\.shopify\\.com/shopifycloud/shopify_chat/"
         ],
@@ -85800,7 +85968,7 @@
         ],
         "description": "Shopify Consent Management let's you create a tracking consent banner for EU customers.",
         "icon": "Shopify.svg",
-        "implies": "Shopify",
+        "requires": "Shopify",
         "scriptSrc": [
             "cookie_consent_shopify\\.js"
         ],
@@ -85813,7 +85981,7 @@
         ],
         "description": "Shopify Geolocation App makes language and country recommendations to customers based on their geographic location and browser or device language.",
         "icon": "Shopify Geolocation App.png",
-        "implies": "Shopify",
+        "requires": "Shopify",
         "scriptSrc": "geolocation-recommendations\\.shopifycloud\\.com/",
         "website": "https://apps.shopify.com/geolocation"
     },
@@ -85824,10 +85992,10 @@
         ],
         "description": "Shopify Product reviews allows you to add a customer review feature to your products.",
         "icon": "Shopify.svg",
-        "implies": "Shopify",
         "js": {
             "SPR": ""
         },
+        "requires": "Shopify",
         "scriptSrc": [
             "productreviews\\.shopifycdn\\.com"
         ],
@@ -86371,13 +86539,32 @@
         "scriptSrc": "/wp-content/plugins/shortcodes-ultimate/.+index\\.js(?:\\?ver=(\\d+(?:\\.\\d+)+))?\\;version:\\1",
         "website": "https://getshortcodes.com"
     },
+    "Shorthand": {
+        "cats": [
+            51
+        ],
+        "description": "Shorthand is a digital publishing platform for creating interactive stories, reports, and other visual content.",
+        "icon": "Shorthand.svg",
+        "js": {
+            "Shorthand": ""
+        },
+        "meta": {
+            "generator": "^Shorthand$"
+        },
+        "pricing": [
+            "mid",
+            "recurring"
+        ],
+        "saas": true,
+        "website": "https://shorthand.com"
+    },
     "Shortly": {
         "cats": [
             100
         ],
         "description": "Shortly help create short URLs for influencer-marketing, social media posts & email-marketing campaigns with your own store domain.",
         "icon": "Shortly.svg",
-        "implies": "Shopify",
+        "requires": "Shopify",
         "scriptSrc": "//shortly\\.shop/",
         "website": "https://apps.shopify.com/shortly"
     },
@@ -86712,6 +86899,20 @@
             "freemium"
         ],
         "website": "https://www.silex.me"
+    },
+    "Silk": {
+        "cats": [
+            66
+        ],
+        "description": "Silk is a React component library for building accessible, native-like swipeable sheets, drawers, and modal overlays.",
+        "dom": "[data-silk]",
+        "icon": "Silk.png",
+        "implies": "React",
+        "pricing": [
+            "mid",
+            "onetime"
+        ],
+        "website": "https://silkhq.com"
     },
     "Silktide": {
         "cats": [
@@ -88084,11 +88285,11 @@
         ],
         "description": "Skio helps brands on Shopify sell subscriptions without ripping their hair out.",
         "icon": "Skio.png",
-        "implies": "Shopify",
         "pricing": [
             "mid",
             "recurring"
         ],
+        "requires": "Shopify",
         "saas": true,
         "scriptSrc": "cdn\\.skio\\.com/",
         "website": "https://skio.com"
@@ -88222,7 +88423,6 @@
         ],
         "description": "SkyVerge is a company which develop extension tools for WooCommerce stores.",
         "icon": "SkyVerge.svg",
-        "implies": "WooCommerce",
         "js": {
             "sv_wc_payment_gateway_payment_form_param": ""
         },
@@ -88230,6 +88430,7 @@
             "low",
             "recurring"
         ],
+        "requires": "WooCommerce",
         "saas": true,
         "scriptSrc": "sv-wc-payment-gateway-payment-form\\.js(?:\\?ver=([\\d.]+))?\\;version:\\1",
         "website": "https://www.skyverge.com"
@@ -89354,10 +89555,10 @@
         ],
         "description": "SobiPro is a directory and listing management extension for Joomla, used to create and manage directories, business listings, and other types of structured content on websites.",
         "icon": "Sobi.svg",
-        "implies": "Joomla",
         "js": {
             "SobiProUrl": ""
         },
+        "requires": "Joomla",
         "website": "https://sigsiu.net/sobipro.html"
     },
     "Sobot Live Chat": {
@@ -91156,7 +91357,6 @@
         ],
         "description": "SpurIT is a team of certified Shopify experts which provide ecommerce software solutions.",
         "icon": "SpurIT.svg",
-        "implies": "Shopify",
         "js": {
             "Spurit.global.version": "(.+)\\;version:\\1"
         },
@@ -91165,6 +91365,7 @@
             "low",
             "recurring"
         ],
+        "requires": "Shopify",
         "saas": true,
         "scriptSrc": "cdn-spurit\\.com/shopify-apps/",
         "website": "https://spur-i-t.com"
@@ -91176,7 +91377,6 @@
         ],
         "description": "SpurIT Abandoned Cart Reminder bring back your Shopify store visitors who moved to another tab by blinking a store tab.",
         "icon": "SpurIT.svg",
-        "implies": "Shopify",
         "js": {
             "ACR_SPURIT_Params.folderCss": "cdn-spurit\\.com/shopify-apps/abandoned-cart-reminder/"
         },
@@ -91184,6 +91384,7 @@
             "low",
             "recurring"
         ],
+        "requires": "Shopify",
         "saas": true,
         "scriptSrc": "cdn-spurit\\.com/shopify-apps/abandoned-cart-reminder/",
         "website": "https://spur-i-t.com/shopify-apps/abandoned-cart-reminder/"
@@ -91196,7 +91397,6 @@
         ],
         "description": "SpurIT Loyalty App is a turnkey solution allowing you to reward existing customers in a number of ways.",
         "icon": "SpurIT.svg",
-        "implies": "Shopify",
         "js": {
             "Spurit.Loyaltypoints": ""
         },
@@ -91204,6 +91404,7 @@
             "low",
             "recurring"
         ],
+        "requires": "Shopify",
         "saas": true,
         "scriptSrc": "cdn-spurit\\.com/shopify-apps/loyaltypoints/",
         "website": "https://spur-i-t.com/shopify-apps/loyalty-points-manager"
@@ -91215,11 +91416,11 @@
         ],
         "description": "SpurIT Partial Payments App allow customers to pay for the order in several ways or to share a payment with other people.",
         "icon": "SpurIT.svg",
-        "implies": "Shopify",
         "pricing": [
             "low",
             "recurring"
         ],
+        "requires": "Shopify",
         "saas": true,
         "scriptSrc": "cdn-spurit\\.com/shopify-apps/split-payments/",
         "website": "https://spur-i-t.com/shopify-apps/split-partial-payments/"
@@ -91231,7 +91432,6 @@
         ],
         "description": "SpurIT Recurring Payments App is a simple way to create a system of bill payment,subscriptions and invoicing.",
         "icon": "SpurIT.svg",
-        "implies": "Shopify",
         "js": {
             "Spurit.recurringInvoices": ""
         },
@@ -91239,6 +91439,7 @@
             "low",
             "recurring"
         ],
+        "requires": "Shopify",
         "saas": true,
         "scriptSrc": "cdn-spurit\\.com/shopify-apps/recurring-invoices/",
         "website": "https://spur-i-t.com/shopify-apps/recurring-order-subscription"
@@ -91401,7 +91602,6 @@
             "server": "Squarespace"
         },
         "icon": "Squarespace.svg",
-        "implies": "Squarespace",
         "js": {
             "SQUARESPACE_ROLLUPS.squarespace-commerce": "",
             "Static.SQUARESPACE_CONTEXT.templateVersion": "^(\\d(?:\\.\\d)?)$\\;version:\\1"
@@ -91410,6 +91610,7 @@
             "low",
             "recurring"
         ],
+        "requires": "Squarespace",
         "saas": true,
         "scriptSrc": "assets\\.squarespace\\.\\w+/universal/scripts-compressed/commerce-\\w+-min\\.[\\w+\\-]+\\.js",
         "website": "https://www.squarespace.com/ecommerce-website"
@@ -92924,6 +93125,7 @@
             11
         ],
         "description": "Substack is an American online platform that provides publishing, payment, analytics, and design infrastructure to support subscription newsletters.",
+        "dom": "iframe[src*='.substack.com/embed']",
         "headers": {
             "x-cluster": "substack",
             "x-served-by": "Substack"
@@ -93294,7 +93496,6 @@
         "description": "SuperPWA helps to easily convert your WordPress website into Progressive Web Apps instantly through our widely used PWA software without in coding.",
         "icon": "superpwa.svg",
         "implies": [
-            "WordPress",
             "PWA"
         ],
         "js": {
@@ -93304,6 +93505,7 @@
             "onetime",
             "recurring"
         ],
+        "requires": "WordPress",
         "website": "https://superpwa.com"
     },
     "SuperPluralAnalytics": {
@@ -93778,7 +93980,6 @@
         ],
         "description": "SweetCode Pixel Manager for WooCommerce is a WordPress plugin for tracking ecommerce conversions across Google Ads, GA4, Meta, TikTok, Pinterest, and Microsoft Ads.",
         "icon": "SweetCode Pixel Manager for WooCommerce.png",
-        "implies": "WooCommerce",
         "js": {
             "pmwDataLayer.version.number": "^(.+)$\\;version:\\1",
             "wpmDataLayer.version.number": "^(.+)$\\;version:\\1"
@@ -93791,6 +93992,7 @@
             "low",
             "recurring"
         ],
+        "requires": "WooCommerce",
         "scriptSrc": [
             "/wp-content/plugins/woocommerce-google-adwords-conversion-tracking-tag/js/public/(?:free/)?pmw-public\\.p1\\.min\\.js(?:\\?ver=([\\d.]+))?\\;version:\\1",
             "/wp-content/plugins/woocommerce-google-adwords-conversion-tracking-tag/js/public/(?:free/)?[a-z-]+\\.[a-f0-9]+\\.chunk\\.min\\.js",
@@ -95049,12 +95251,12 @@
         ],
         "description": "Tada offers interactive website popups that allow Shopify merchants to collect more emails and increase sales by engaging website visitors through gamification.",
         "icon": "Tada.svg",
-        "implies": "Shopify",
         "pricing": [
             "freemium",
             "payg",
             "recurring"
         ],
+        "requires": "Shopify",
         "saas": true,
         "scriptSrc": "cdn\\.trytada\\.com/",
         "website": "https://trytada.com"
@@ -95466,10 +95668,12 @@
         "dom": [
             "link[href*='@tanstack']",
             "link[rel='modulepreload'][href*='tanstack-query-']",
-            "link[rel='modulepreload'][href*='tanstack-router-']"
+            "link[rel='modulepreload'][href*='tanstack-router-']",
+            "svg.ts-chart[aria-roledescription='chart'] [data-ts-key]"
         ],
         "icon": "TanStack.svg",
         "js": {
+            "__TSR_ROUTER__": "",
             "__TSS_START_OPTIONS__": ""
         },
         "oss": true,
@@ -96567,13 +96771,13 @@
         "description": "The Newsletter Plugin is a WordPress plugin for managing subscribers and creating, sending, and tracking email campaigns.",
         "dom": "link#newsletter-css[href*='/wp-content/plugins/newsletter/style.css']",
         "icon": "The Newsletter Plugin.svg",
-        "implies": "WordPress",
         "oss": true,
         "pricing": [
             "freemium",
             "low",
             "onetime"
         ],
+        "requires": "WordPress",
         "scriptSrc": "/wp-content/plugins/newsletter/(?:main|subscription/validate)\\.js(?:\\?ver=([\\d.]+))?\\;version:\\1",
         "website": "https://www.thenewsletterplugin.com"
     },
@@ -97843,17 +98047,25 @@
         "cats": [
             6
         ],
-        "description": "Tiktak Pro is an ecommerce platform from Tunisia.",
+        "description": "Tiktak Pro is an ecommerce platform for building online stores and managing orders, deliveries, and customers.",
+        "dom": "html[data-generator='TikTak PRO']",
+        "headers": {
+            "X-Generator": "^TikTak PRO$",
+            "X-Powered-By": "^TikTak PRO$",
+            "X-TikTak-PRO": "^TikTak PRO$"
+        },
         "icon": "Tiktak Pro.svg",
         "meta": {
-            "author": "^tiktak-themes$"
+            "author": "^tiktak-themes$",
+            "generator": "^TikTak PRO$",
+            "powered-by": "^TikTak PRO$"
         },
         "pricing": [
             "low",
             "recurring"
         ],
         "saas": true,
-        "website": "https://tiktakpro.tn"
+        "website": "https://tiktakpro.com"
     },
     "Tilda": {
         "cats": [
@@ -98750,11 +98962,11 @@
         ],
         "description": "Trackify X is a pixel engine that helps merchants backup their pixel data and manage multiple pixels.",
         "icon": "Trackify X.svg",
-        "implies": "Shopify",
         "pricing": [
             "low",
             "recurring"
         ],
+        "requires": "Shopify",
         "saas": true,
         "scriptSrc": "trackifyx\\.redretarget\\.com/",
         "website": "https://trackifyapp.com"
@@ -98940,7 +99152,6 @@
         ],
         "description": "Transcy is a Shopify translation app.",
         "icon": "Transcy.svg",
-        "implies": "Shopify",
         "js": {
             "_transcy": "",
             "transcy_apiURI": "",
@@ -98951,6 +99162,7 @@
             "low",
             "recurring"
         ],
+        "requires": "Shopify",
         "saas": true,
         "website": "https://transcy.io"
     },
@@ -100624,7 +100836,6 @@
         ],
         "description": "Tyslo EasySell replaces default Shopify checkout process by embedding (or popup) a simple order form on the product or cart page.",
         "icon": "Tyslo EasySell.svg",
-        "implies": "Shopify",
         "js": {
             "openTysloForm": "",
             "tysloApplyDiscount": "",
@@ -100636,6 +100847,7 @@
             "freemium",
             "recurring"
         ],
+        "requires": "Shopify",
         "saas": true,
         "website": "https://tyslo.com"
     },
@@ -100990,7 +101202,7 @@
         ],
         "cpe": "cpe:2.3:a:ubercart:ubercart:*:*:*:*:*:*:*:*",
         "icon": "Ubercart.png",
-        "implies": "Drupal",
+        "requires": "Drupal",
         "scriptSrc": "uc_cart/uc_cart_block\\.js",
         "website": "https://www.ubercart.org"
     },
@@ -101076,6 +101288,24 @@
         "saas": true,
         "scriptSrc": "static\\.ucraft\\.net",
         "website": "https://www.ucraft.com"
+    },
+    "Uebfaqe": {
+        "cats": [
+            51
+        ],
+        "description": "Uebfaqe is an AI website builder for creating, editing, and publishing sites on hosted subdomains or custom domains.",
+        "icon": "Uebfaqe.svg",
+        "meta": {
+            "generator": "^Uebfaqe$"
+        },
+        "pricing": [
+            "low",
+            "freemium",
+            "recurring"
+        ],
+        "saas": true,
+        "url": "^https?://[^/]+\\.uebfaqe\\.app/",
+        "website": "https://uebfaqe.ai"
     },
     "Ueeshop": {
         "cats": [
@@ -103014,11 +103244,11 @@
         "cpe": "cpe:2.3:a:vardot:varbase:*:*:*:*:*:*:*:*",
         "dom": "meta[content='Varbase'],div[class*='varbase_'],div[class*='_varbase'],div[class*='varbase-'],div[class*='block-varbase'],div[class*='blockvarbase']",
         "icon": "varbase.svg",
-        "implies": "Drupal",
         "js": {
             "drupalSettings.ajaxPageState.libraries": ".+varbase_.+"
         },
         "oss": true,
+        "requires": "Drupal",
         "website": "https://www.vardot.com/solutions/varbase"
     },
     "Varify": {
@@ -104577,10 +104807,6 @@
         ],
         "description": "Visual Composer is a web design tool for anyone who uses WordPress.",
         "icon": "visualcomposer.svg",
-        "implies": [
-            "WordPress",
-            "PHP"
-        ],
         "meta": {
             "generator": "Powered by Visual Composer Website Builder"
         },
@@ -104588,6 +104814,7 @@
             "low",
             "recurring"
         ],
+        "requires": "WordPress",
         "website": "https://visualcomposer.com"
     },
     "Visual Portfolio": {
@@ -107039,11 +107266,8 @@
         ],
         "description": "WebToffee EU Order Withdrawal Button for WooCommerce is an open-source plugin for submitting and managing online order withdrawal requests.",
         "icon": "WebToffee EU Order Withdrawal Button.png",
-        "implies": [
-            "WordPress",
-            "WooCommerce"
-        ],
         "oss": true,
+        "requires": "WooCommerce",
         "scriptSrc": "/wp-content/plugins/wt-eu-withdrawal-button/assets/js/wbte-ewb-frontend(?:\\.min)?\\.js(?:\\?ver=([\\d.]+))?\\;version:\\1",
         "website": "https://wordpress.org/plugins/wt-eu-withdrawal-button/"
     },
@@ -107055,14 +107279,13 @@
         "dom": "link[href*='/wp-content/plugins/payment-gateway-stripe-and-woocommerce-integration/']",
         "icon": "WebToffee.svg",
         "implies": [
-            "Stripe",
-            "WooCommerce"
+            "Stripe"
         ],
         "pricing": [
             "recurring",
             "low"
         ],
-        "requires": "WordPress",
+        "requires": "WooCommerce",
         "saas": true,
         "website": "https://www.webtoffee.com/product/woocommerce-stripe-payment-gateway/"
     },
@@ -108254,11 +108477,11 @@
         ],
         "description": "WideBundle is a Shopify application that allows a merchant to set up bundles on his store.",
         "icon": "WideBundle.svg",
-        "implies": "Shopify",
         "pricing": [
             "low",
             "recurring"
         ],
+        "requires": "Shopify",
         "saas": true,
         "scriptSrc": "//widebundle\\.com/",
         "website": "https://en.widebundle.com"
@@ -108792,11 +109015,11 @@
             }
         },
         "icon": "Wix.svg",
-        "implies": "Wix",
         "pricing": [
             "low",
             "recurring"
         ],
+        "requires": "Wix",
         "saas": true,
         "scripts": "static\\.wixstatic\\.com",
         "website": "https://www.wix.com/freesitebuilder/tae-store"
@@ -109093,12 +109316,11 @@
         "description": "WooCommerce Subscriptions primarily allows you to create and sell subscription products from your WooCommerce shop.",
         "dom": "link[href*='/wp-content/plugins/woocommerce-subscriptions/']",
         "icon": "WooCommerce.svg",
-        "implies": "WooCommerce",
         "pricing": [
             "low",
             "recurring"
         ],
-        "requires": "WordPress",
+        "requires": "WooCommerce",
         "website": "https://woocommerce.com/products/woocommerce-subscriptions"
     },
     "Woodmart": {
@@ -109182,7 +109404,6 @@
         ],
         "description": "Woostify is fast, lightweight, responsive and flexible WooCommerce theme built with SEO, speed, and usability in mind.",
         "icon": "Woostify.svg",
-        "implies": "WooCommerce",
         "js": {
             "woostifyConditionScrolling": "",
             "woostify_woocommerce_general": ""
@@ -109192,7 +109413,7 @@
             "low",
             "recurring"
         ],
-        "requires": "WordPress",
+        "requires": "WooCommerce",
         "scriptSrc": "/wp-content/themes/woostify/",
         "website": "https://woostify.com"
     },
@@ -110389,7 +110610,6 @@
         ],
         "description": "YMQ Product Options Variant Option help add a unlimited number of product options to your items so you're not restricted by Shopify's limit of 3 options and 100 variants.",
         "icon": "YMQ Product Options Variant Option.svg",
-        "implies": "Shopify",
         "js": {
             "ymq_option.v": "\\?v=([\\d\\.]+)\\;version:\\1"
         },
@@ -110397,6 +110617,7 @@
             "low",
             "recurring"
         ],
+        "requires": "Shopify",
         "saas": true,
         "website": "https://apps.shopify.com/ymq-options"
     },
@@ -111027,11 +111248,11 @@
         "description": "Yoast SEO for Shopify optimizes Shopify shops.",
         "dom": "script#yoast-schema-graph",
         "icon": "yoast-seo-shopify.png",
-        "implies": "Shopify",
         "pricing": [
             "low",
             "recurring"
         ],
+        "requires": "Shopify",
         "saas": true,
         "website": "https://yoast.com/shopify/apps/yoast-seo/"
     },
@@ -111311,7 +111532,6 @@
         ],
         "description": "YouPay is an alternative method of payment that allows you to give someone else the ability to pay for your shopping cart with no fees or interest.",
         "icon": "YouPay.svg",
-        "implies": "Shopify",
         "js": {
             "YouPay.buttonWindow": "",
             "youpayReady": "",
@@ -111320,6 +111540,7 @@
         "pricing": [
             "payg"
         ],
+        "requires": "Shopify",
         "saas": true,
         "scriptSrc": "app\\.youpay\\.ai/",
         "website": "https://youpay.co"
@@ -112490,7 +112711,6 @@
         ],
         "description": "Zipify Pages the first landing page builder uniquely designed for ecommerce.",
         "icon": "Zipify Pages.svg",
-        "implies": "Shopify",
         "js": {
             "ZipifyPages": ""
         },
@@ -112498,6 +112718,7 @@
             "low",
             "recurring"
         ],
+        "requires": "Shopify",
         "saas": true,
         "website": "https://zipify.com/apps/pages/"
     },

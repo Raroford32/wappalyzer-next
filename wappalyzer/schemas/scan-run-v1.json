@@ -1,0 +1,537 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wappalyzer.com/schemas/scan-run-v1.json",
+  "title": "Wappalyzer canonical scan run record",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "occurrence",
+    "endpoint",
+    "status",
+    "error_codes",
+    "protocols"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "scan-run-v1"
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "occurrence": {
+      "$ref": "#/$defs/occurrence"
+    },
+    "endpoint": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/endpoint"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "status": {
+      "enum": [
+        "invalid_input",
+        "unreachable",
+        "partial",
+        "success_empty",
+        "success"
+      ]
+    },
+    "error_codes": {
+      "$ref": "#/$defs/error_codes"
+    },
+    "protocols": {
+      "type": "array",
+      "maxItems": 2,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/protocol_result"
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "invalid_input"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "endpoint": {
+            "type": "null"
+          },
+          "error_codes": {
+            "contains": {
+              "const": "invalid_input"
+            }
+          },
+          "protocols": {
+            "maxItems": 0
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "endpoint": {
+            "$ref": "#/$defs/endpoint"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "enum": [
+              "partial",
+              "success_empty",
+              "success"
+            ]
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "protocols": {
+            "minItems": 1
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "error_code": {
+      "enum": [
+        "invalid_input",
+        "unreachable",
+        "tls_untrusted",
+        "discovery_timeout",
+        "scan_timeout",
+        "cancelled",
+        "output_failure",
+        "worker_failure",
+        "internal_failure",
+        "insufficient_resources"
+      ]
+    },
+    "error_codes": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/error_code"
+      }
+    },
+    "occurrence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sequence",
+        "line_number",
+        "byte_offset",
+        "line_digest"
+      ],
+      "properties": {
+        "sequence": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "line_number": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "byte_offset": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "line_digest": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "endpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "address",
+        "port"
+      ],
+      "properties": {
+        "address": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 45,
+          "pattern": "^[0-9a-f:.]+$"
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        }
+      }
+    },
+    "tls": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "present",
+        "trust"
+      ],
+      "properties": {
+        "present": {
+          "type": "boolean"
+        },
+        "trust": {
+          "enum": [
+            "not_applicable",
+            "trusted",
+            "untrusted",
+            "indeterminate"
+          ]
+        },
+        "certificate_sha256": {
+          "$ref": "#/$defs/digest"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "present": {
+                "const": false
+              }
+            },
+            "required": [
+              "present"
+            ]
+          },
+          "then": {
+            "properties": {
+              "trust": {
+                "const": "not_applicable"
+              }
+            },
+            "not": {
+              "required": [
+                "certificate_sha256"
+              ]
+            }
+          },
+          "else": {
+            "properties": {
+              "trust": {
+                "enum": [
+                  "trusted",
+                  "untrusted",
+                  "indeterminate"
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "technology": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "version",
+        "confidence",
+        "categories",
+        "groups"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "type": "string"
+        },
+        "confidence": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "categories": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "groups": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "response_identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "effective_url",
+        "http_status",
+        "content_sha256"
+      ],
+      "properties": {
+        "effective_url": {
+          "type": "string",
+          "minLength": 1
+        },
+        "http_status": {
+          "type": "integer",
+          "minimum": 100,
+          "maximum": 599
+        },
+        "content_sha256": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "evidence_truncation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "channel",
+        "limits"
+      ],
+      "properties": {
+        "channel": {
+          "enum": [
+            "certIssuer",
+            "cookies",
+            "css",
+            "dns",
+            "dom",
+            "headers",
+            "html",
+            "js",
+            "meta",
+            "probe",
+            "robots",
+            "scriptSrc",
+            "scripts",
+            "text",
+            "url",
+            "xhr"
+          ]
+        },
+        "limits": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "count",
+              "bytes",
+              "timer",
+              "redirect",
+              "policy",
+              "worker"
+            ]
+          }
+        }
+      }
+    },
+    "stage_result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "status",
+        "error_codes",
+        "response_identity",
+        "technologies",
+        "truncations"
+      ],
+      "properties": {
+        "name": {
+          "enum": [
+            "static",
+            "browser"
+          ]
+        },
+        "status": {
+          "enum": [
+            "indeterminate",
+            "partial",
+            "success_empty",
+            "success"
+          ]
+        },
+        "error_codes": {
+          "$ref": "#/$defs/error_codes"
+        },
+        "response_identity": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/response_identity"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "technologies": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/technology"
+          }
+        },
+        "truncations": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/evidence_truncation"
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "truncations": {
+                "minItems": 1
+              }
+            },
+            "required": [
+              "truncations"
+            ]
+          },
+          "then": {
+            "properties": {
+              "status": {
+                "const": "partial"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "protocol_result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocol",
+        "status",
+        "requested_url",
+        "effective_url",
+        "http_status",
+        "tls",
+        "observation",
+        "stages",
+        "technologies",
+        "error_codes"
+      ],
+      "properties": {
+        "protocol": {
+          "enum": [
+            "http",
+            "https"
+          ]
+        },
+        "status": {
+          "enum": [
+            "unavailable",
+            "indeterminate",
+            "partial",
+            "success_empty",
+            "success"
+          ]
+        },
+        "requested_url": {
+          "type": "string",
+          "minLength": 1
+        },
+        "effective_url": {
+          "type": "string",
+          "minLength": 1
+        },
+        "http_status": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 100,
+          "maximum": 599
+        },
+        "tls": {
+          "$ref": "#/$defs/tls"
+        },
+        "observation": {
+          "enum": [
+            "single_observation",
+            "multi_observation"
+          ]
+        },
+        "stages": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/stage_result"
+          }
+        },
+        "technologies": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/technology"
+          }
+        },
+        "error_codes": {
+          "$ref": "#/$defs/error_codes"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "observation": {
+                "const": "multi_observation"
+              }
+            },
+            "required": [
+              "observation"
+            ]
+          },
+          "then": {
+            "properties": {
+              "status": {
+                "const": "partial"
+              },
+              "technologies": {
+                "maxItems": 0
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}
