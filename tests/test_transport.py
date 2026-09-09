@@ -1,6 +1,7 @@
 import json
 import ssl
 from dataclasses import asdict
+from ipaddress import ip_address
 
 import pytest
 import requests
@@ -701,10 +702,12 @@ def test_egress_policy_blocks_metadata_aliases_and_ipv4_mapped_private_addresses
 def test_egress_policy_allows_ipv4_mapped_public_addresses():
     policy = EgressPolicy(())
 
-    assert policy.authorize(
+    addresses = policy.authorize(
         "https://[::ffff:8.8.8.8]/",
         RequestPurpose.REDIRECT,
-    ) == ("::ffff:808:808",)
+    )
+
+    assert tuple(map(ip_address, addresses)) == (ip_address("::ffff:8.8.8.8"),)
 
 
 @pytest.mark.parametrize(
