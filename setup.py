@@ -25,7 +25,8 @@ setup(
     python_requires=">=3.9",
     install_requires=[
         "requests>=2.32,<3",
-        "urllib3>=2.7,<3",
+        "urllib3>=2.6.3,<2.7; python_version < '3.10'",
+        "urllib3>=2.7,<3; python_version >= '3.10'",
         "huepy==1.2.1",
         "playwright>=1.50,<2",
         "tldextract>=5.1,<6",
