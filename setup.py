@@ -21,7 +21,7 @@ setup(
     license="GNU General Public License v3",
     url="https://github.com/Raroford32/wappalyzer-next",
     packages=find_packages(),
-    package_data={"wappalyzer": ["data/*"]},
+    package_data={"wappalyzer": ["data/*", "schemas/*.json"]},
     python_requires=">=3.9",
     install_requires=[
         "requests>=2.32,<3",
