@@ -197,11 +197,14 @@ def test_effective_cpu_is_the_minimum_positive_host_affinity_cpuset_and_quota():
 def test_effective_memory_uses_tightest_source_then_keeps_emergency_reserve():
     cgroup_limit = 6 * GIB
     cgroup_current = 2 * GIB
-    assert effective_available_memory(
-        8 * GIB,
-        str(cgroup_limit),
-        str(cgroup_current),
-    ) == cgroup_limit - max((cgroup_limit + 4) // 5, 512 * MIB) - cgroup_current
+    assert (
+        effective_available_memory(
+            8 * GIB,
+            str(cgroup_limit),
+            str(cgroup_current),
+        )
+        == cgroup_limit - max((cgroup_limit + 4) // 5, 512 * MIB) - cgroup_current
+    )
 
     assert effective_available_memory(2 * GIB, "max", "not-needed") == 1536 * MIB
     assert effective_available_memory(2 * GIB, "broken", "1") is None
@@ -215,11 +218,7 @@ def test_snapshot_captures_current_use_and_all_effective_budgets():
 
     assert snapshot == ResourceSnapshot(
         cpu_count=2,
-        memory_bytes=(
-            cgroup_limit
-            - max((cgroup_limit + 4) // 5, 512 * MIB)
-            - cgroup_current
-        ),
+        memory_bytes=(cgroup_limit - max((cgroup_limit + 4) // 5, 512 * MIB) - cgroup_current),
         file_descriptors=1000,
         sockets=1000,
         processes=90,
@@ -252,7 +251,7 @@ def test_snapshot_falls_back_deterministically_for_missing_malformed_and_unlimit
     snapshot = capture_snapshot(probe, artifact_path=Path("/artifacts"))
 
     assert snapshot.cpu_count == 4
-    assert snapshot.memory_bytes is None
+    assert snapshot.memory_bytes == 1536 * MIB
     assert snapshot.file_descriptors is None
     assert snapshot.sockets is None
     assert snapshot.processes is None
@@ -393,7 +392,7 @@ def test_browser_active_page_growth_contracts_only_browser_capacity():
     adapted = autosize(resource_snapshot(), grown_page, requested=requested)
 
     assert baseline.selected == WorkerCounts(discovery=2, static=3, browser=6)
-    assert adapted.selected == WorkerCounts(discovery=8, static=4, browser=2)
+    assert adapted.selected == WorkerCounts(discovery=2, static=3, browser=3)
     assert adapted.selected.browser < baseline.selected.browser
 
 

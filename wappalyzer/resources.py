@@ -682,10 +682,7 @@ def selected_resource_request(counts, profile):
 
 def _remaining_capacity(capacity, used):
     return ResourceRequest(
-        *(
-            max(0, getattr(capacity, name) - getattr(used, name))
-            for name in _RESOURCE_FIELDS
-        )
+        *(max(0, getattr(capacity, name) - getattr(used, name)) for name in _RESOURCE_FIELDS)
     )
 
 
@@ -772,14 +769,10 @@ def autosize(
                     else selected.discovery
                 ),
                 static=(
-                    selected.static + additional
-                    if field_name == "static"
-                    else selected.static
+                    selected.static + additional if field_name == "static" else selected.static
                 ),
                 browser=(
-                    selected.browser + additional
-                    if field_name == "browser"
-                    else selected.browser
+                    selected.browser + additional if field_name == "browser" else selected.browser
                 ),
             )
     return ResourcePlan(
@@ -864,9 +857,7 @@ class ResourceBroker:
             if (
                 self._waiters
                 or not self._in_use.fits_within(self._capacity)
-                or not request.fits_within(
-                    _remaining_capacity(self._capacity, self._in_use)
-                )
+                or not request.fits_within(_remaining_capacity(self._capacity, self._in_use))
             ):
                 return None
             self._in_use += request
