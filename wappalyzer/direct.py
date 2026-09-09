@@ -72,7 +72,7 @@ def _regular_file_sha256(path):
         )
         for item in (before, after, current)
     }
-    if len(identities) != 1 or before.st_nlink < 1:
+    if len(identities) != 1:
         raise ValueError("input changed while its identity was computed")
     return byte_count, digest.hexdigest()
 
@@ -185,8 +185,6 @@ async def run_direct_scan(
                 )
 
             async def scan_endpoint(endpoint):
-                if runtime is None:
-                    raise RuntimeError("endpoint execution was requested without a runtime")
                 return await runtime.scan(endpoint)
 
             pipeline = BoundedScanPipeline(
