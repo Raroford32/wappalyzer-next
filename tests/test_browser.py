@@ -357,6 +357,22 @@ def test_untrusted_tls_exception_is_scoped_and_cross_authority_https_is_blocked(
     assert analyzer._tls_exception_allows("https://192.0.2.1:8443/path", target_origin)
     assert not analyzer._tls_exception_allows("https://example.com/path", target_origin)
     assert analyzer._tls_exception_allows("http://example.com/path", target_origin)
+    assert analyzer._browser_route_allows(
+        "http://192.0.2.1:8443/path",
+        ("http", "192.0.2.1", 8443),
+    )
+    assert not analyzer._browser_route_allows(
+        "http://169.254.169.254/latest/meta-data",
+        ("http", "192.0.2.1", 8443),
+    )
+    assert not analyzer._browser_route_allows(
+        "http://127.0.0.1:80/private",
+        ("http", "192.0.2.1", 8443),
+    )
+    assert analyzer._browser_route_allows(
+        "https://example.com/resource.js",
+        ("http", "192.0.2.1", 8443),
+    )
 
 
 def test_policy_block_is_reported_for_every_browser_owned_channel():
