@@ -1,3 +1,4 @@
+import asyncio
 import os
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -92,3 +93,31 @@ def test_every_warmed_browser_detects_complete_isolated_schema(monkeypatch):
     for fixture, technology in expected.items():
         url = next(url for url in urls if f"/{fixture}/" in url)
         assert technology in results[url]
+
+
+def test_complete_browser_stage_preserves_raw_runtime_channel_provenance():
+    server = ThreadingHTTPServer(("127.0.0.1", 0), HonoHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    port = server.server_address[1]
+    url = f"http://127.0.0.1:{port}/delayed-js/raw"
+
+    async def scan():
+        pool = browser_analyzer.DriverPool(size=1, timeout=12)
+        try:
+            await pool.start()
+            async with pool.get_driver() as driver:
+                return await browser_analyzer.process_url_evidence(driver, url)
+        finally:
+            await pool.cleanup()
+
+    try:
+        stage = asyncio.run(scan())
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join()
+
+    react = [item for item in stage.detections if item.technology == "React"]
+    assert [(item.channel, item.version) for item in react] == [("js", "19.1.0")]
+    assert stage.response_identity.effective_url == url
