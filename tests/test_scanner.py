@@ -153,7 +153,9 @@ def test_empty_browser_pool_fails_instead_of_returning_empty_success():
             return None
 
     backend = scanner._FullScanBackend()
+    assert backend._pool_lock is None
     backend.pool = EmptyPool()
 
     with pytest.raises(RuntimeError, match="No healthy browser driver"):
         asyncio.run(backend.ensure_pool(1))
+    assert backend._pool_lock is not None

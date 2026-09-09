@@ -255,21 +255,21 @@ def test_pipeline_converts_worker_exceptions_to_terminal_protocol_outcomes(tmp_p
 
 def test_pipeline_cancellation_interrupts_and_releases_every_claim(tmp_path):
     store = prepared_store(tmp_path, 8)
-    started = asyncio.Event()
-
-    async def scan(_endpoint):
-        started.set()
-        await asyncio.sleep(30)
-        raise AssertionError("cancelled worker continued")
-
-    pipeline = BoundedScanPipeline(
-        store=store,
-        scan_endpoint=scan,
-        projector=CanonicalProjector(store),
-        max_inflight=3,
-    )
 
     async def cancel_run():
+        started = asyncio.Event()
+
+        async def scan(_endpoint):
+            started.set()
+            await asyncio.sleep(30)
+            raise AssertionError("cancelled worker continued")
+
+        pipeline = BoundedScanPipeline(
+            store=store,
+            scan_endpoint=scan,
+            projector=CanonicalProjector(store),
+            max_inflight=3,
+        )
         task = asyncio.create_task(pipeline.run())
         await started.wait()
         task.cancel()

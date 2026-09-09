@@ -490,6 +490,8 @@ def test_extension_archive_rejects_path_traversal(tmp_path):
 
 def test_browser_pool_growth_is_incremental_to_avoid_startup_spikes(monkeypatch):
     pool = analyzer.DriverPool(size=0)
+    assert pool.queue is None
+
     active = 0
     peak = 0
 
@@ -506,4 +508,5 @@ def test_browser_pool_growth_is_incremental_to_avoid_startup_spikes(monkeypatch)
     asyncio.run(pool.grow_to(4))
 
     assert pool.size == 4
+    assert pool.queue is not None
     assert peak == 1

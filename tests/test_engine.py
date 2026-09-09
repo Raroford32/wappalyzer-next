@@ -188,33 +188,37 @@ def test_endpoint_scanner_converts_complete_exception_to_worker_failure():
 
 def test_endpoint_scanner_cancellation_during_complete_cleans_up_siblings():
     discoveries = tuple(discovery(protocol, DiscoveryState.LIVE) for protocol in Protocol)
-    both_started = asyncio.Event()
     started = set()
     https_cleaned_up = False
 
-    async def complete_runner(result):
-        nonlocal https_cleaned_up
-        started.add(result.protocol)
-        if len(started) == len(Protocol):
-            both_started.set()
-        await both_started.wait()
-        if result.protocol is Protocol.HTTP:
-            raise asyncio.CancelledError
-        try:
-            await asyncio.sleep(30)
-        finally:
-            https_cleaned_up = True
+    async def exercise():
+        both_started = asyncio.Event()
 
-    scanner = ExhaustiveEndpointScanner(
-        discovery_runner=lambda _endpoint: discoveries,
-        complete_runner=complete_runner,
-        discovery_workers=1,
-    )
-    try:
-        with pytest.raises(asyncio.CancelledError):
-            asyncio.run(scanner.scan(Endpoint("192.0.2.1", 8443)))
-    finally:
-        scanner.close()
+        async def complete_runner(result):
+            nonlocal https_cleaned_up
+            started.add(result.protocol)
+            if len(started) == len(Protocol):
+                both_started.set()
+            await both_started.wait()
+            if result.protocol is Protocol.HTTP:
+                raise asyncio.CancelledError
+            try:
+                await asyncio.sleep(30)
+            finally:
+                https_cleaned_up = True
+
+        scanner = ExhaustiveEndpointScanner(
+            discovery_runner=lambda _endpoint: discoveries,
+            complete_runner=complete_runner,
+            discovery_workers=1,
+        )
+        try:
+            with pytest.raises(asyncio.CancelledError):
+                await scanner.scan(Endpoint("192.0.2.1", 8443))
+        finally:
+            scanner.close()
+
+    asyncio.run(exercise())
 
     assert started == set(Protocol)
     assert https_cleaned_up

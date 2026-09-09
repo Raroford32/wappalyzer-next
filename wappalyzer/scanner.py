@@ -193,9 +193,12 @@ class _FullScanBackend:
         self.strict_tls = strict_tls
         self.blocked_resource_types = blocked_resource_types
         self.pool = None
-        self._pool_lock = asyncio.Lock()
+        self._pool_lock = None
 
     async def ensure_pool(self, size):
+        if self._pool_lock is None:
+            self._pool_lock = asyncio.Lock()
+
         async with self._pool_lock:
             if self.pool:
                 if size > self.pool.size:

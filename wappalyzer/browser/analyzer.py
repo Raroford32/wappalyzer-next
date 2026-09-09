@@ -632,7 +632,7 @@ class DriverPool:
             if blocked_resource_types is None
             else frozenset(blocked_resource_types)
         )
-        self.queue = asyncio.Queue()
+        self.queue = None
         self.closed = False
         self.playwright = None
         self.extension_dir = None
@@ -642,7 +642,13 @@ class DriverPool:
     def size(self):
         return len(self.drivers)
 
+    def _driver_queue(self):
+        if self.queue is None:
+            self.queue = asyncio.Queue()
+        return self.queue
+
     async def start(self):
+        queue = self._driver_queue()
         self.playwright = await async_playwright().start()
         self.extension_dir = _prepare_extension_dir(os.path.abspath(extension_path))
 
@@ -650,21 +656,22 @@ class DriverPool:
             driver = await self._create_driver()
             if driver:
                 self.drivers.append(driver)
-                await self.queue.put(driver)
+                await queue.put(driver)
 
-        if self.queue.empty():
+        if queue.empty():
             raise RuntimeError("Failed to initialize Chromium browser contexts")
 
     async def grow_to(self, size):
         if self.closed or size <= self.size:
             return
 
+        queue = self._driver_queue()
         additional = size - len(self.drivers)
         for _index in range(additional):
             driver = await self._create_driver()
             if driver:
                 self.drivers.append(driver)
-                await self.queue.put(driver)
+                await queue.put(driver)
 
     async def _create_driver(self):
         for attempt in range(self.max_retries):
@@ -822,9 +829,10 @@ class DriverPool:
 
     @asynccontextmanager
     async def get_driver(self):
+        queue = self._driver_queue()
         try:
             driver = await asyncio.wait_for(
-                self.queue.get(),
+                queue.get(),
                 timeout=self.timeout,
             )
         except asyncio.TimeoutError as error:
@@ -855,7 +863,7 @@ class DriverPool:
                 await self._retire_and_replace(driver)
                 raise
 
-            await self.queue.put(driver)
+            await queue.put(driver)
 
     async def _retire_and_replace(self, driver):
         if driver in self.drivers:
@@ -870,7 +878,7 @@ class DriverPool:
 
         if replacement:
             self.drivers.append(replacement)
-            await self.queue.put(replacement)
+            await self._driver_queue().put(replacement)
 
     async def cleanup(self):
         if self.closed:
