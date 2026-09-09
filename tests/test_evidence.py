@@ -208,6 +208,7 @@ def test_coherent_stages_resolve_once_but_divergent_observations_stay_separate()
         "StaticTech",
     ]
     assert divergent.observation is ProtocolObservation.MULTI
+    assert divergent.status is ProtocolStatus.SUCCESS
     assert divergent.technologies == ()
     assert [stage.technologies[0].name for stage in divergent.stages] == [
         "StaticTech",
