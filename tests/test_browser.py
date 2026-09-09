@@ -5,7 +5,7 @@ import pytest
 
 from wappalyzer.browser import analyzer
 from wappalyzer.evidence_limits import BROWSER_DOM_DETECTIONS_PER_TECH_LIMIT
-from wappalyzer.models import ChannelOwner, EvidenceLimit, StageStatus
+from wappalyzer.models import ChannelOwner, EvidenceLimit, StageStatus, TLSTrust
 
 
 def test_extension_bridge_requests_raw_channel_tagged_detections():
@@ -54,6 +54,10 @@ class FakeDriver:
         self.page = None
         self.timeout_ms = 1_000
         self.extension_id = "example"
+        self.route_state = {
+            "tls_exception_origin": None,
+            "policy_blocked": False,
+        }
 
     async def apply_pending_cookies(self, url):
         return None
@@ -283,6 +287,100 @@ def test_exact_dom_detection_limit_is_not_assumed_truncated_without_overflow_fla
     }
 
     assert analyzer.browser_evidence_truncations(detections, metrics, False) == ()
+
+
+def test_untrusted_tls_exception_is_scoped_and_cross_authority_https_is_blocked(
+    monkeypatch,
+):
+    class Response:
+        status = 200
+
+        async def body(self):
+            return b"response"
+
+    class Session:
+        def __init__(self):
+            self.commands = []
+            self.detached = False
+
+        async def send(self, command, arguments):
+            self.commands.append((command, arguments))
+
+        async def detach(self):
+            self.detached = True
+
+    driver = FakeDriver()
+    page = FakePage()
+    session = Session()
+
+    async def new_page():
+        return page
+
+    async def new_cdp_session(current_page):
+        assert current_page is page
+        return session
+
+    async def goto(url, **kwargs):
+        page.url = url
+        return Response()
+
+    async def no_stimulation(_page):
+        return None
+
+    async def detections(_driver, _url, raw=False):
+        assert raw
+        return []
+
+    async def clear_state(_driver, _page):
+        return None
+
+    driver.context.new_page = new_page
+    driver.context.new_cdp_session = new_cdp_session
+    page.goto = goto
+    monkeypatch.setattr(analyzer, "_stimulate_page", no_stimulation)
+    monkeypatch.setattr(analyzer, "_get_detections", detections)
+    monkeypatch.setattr(analyzer, "_clear_target_state", clear_state)
+
+    asyncio.run(
+        analyzer.process_url_evidence(
+            driver,
+            "https://192.0.2.1:8443",
+            tls_trust=TLSTrust.UNTRUSTED,
+        )
+    )
+
+    assert session.commands == [
+        ("Security.setIgnoreCertificateErrors", {"ignore": True}),
+        ("Security.setIgnoreCertificateErrors", {"ignore": False}),
+    ]
+    assert session.detached
+    target_origin = ("https", "192.0.2.1", 8443)
+    assert analyzer._tls_exception_allows("https://192.0.2.1:8443/path", target_origin)
+    assert not analyzer._tls_exception_allows("https://example.com/path", target_origin)
+    assert analyzer._tls_exception_allows("http://example.com/path", target_origin)
+
+
+def test_policy_block_is_reported_for_every_browser_owned_channel():
+    metrics = {
+        "htmlCharacters": 0,
+        "textCharacters": 0,
+        "inlineScriptCount": 0,
+        "inlineScriptCharacters": 0,
+        "domDetectionTruncated": False,
+    }
+    truncations = analyzer.browser_evidence_truncations(
+        [],
+        metrics,
+        False,
+        policy_blocked=True,
+    )
+
+    assert {item.channel for item in truncations} == {
+        channel
+        for channel, registration in analyzer.CHANNEL_REGISTRY.items()
+        if registration.owner is ChannelOwner.BROWSER
+    }
+    assert all(item.limits == (EvidenceLimit.POLICY,) for item in truncations)
 
 
 def test_cleanup_failure_retires_driver_without_discarding_result(monkeypatch):

@@ -59,7 +59,7 @@ def test_complete_executor_unions_every_owned_channel_once():
         if registration.owner is ChannelOwner.BROWSER
     )
 
-    async def browser_runner(_url, _cookie):
+    async def browser_runner(_url, _cookie, _tls):
         return stage(StageName.BROWSER, browser_channels)
 
     executor = CompleteScanExecutor(
@@ -93,7 +93,7 @@ def test_complete_executor_unions_every_owned_channel_once():
 def test_complete_executor_preserves_completed_stage_when_peer_fails():
     static_stage = stage(StageName.STATIC, ("robots",))
 
-    async def failing_browser(_url, _cookie):
+    async def failing_browser(_url, _cookie, _tls):
         raise asyncio.TimeoutError()
 
     executor = CompleteScanExecutor(
@@ -135,7 +135,7 @@ def test_complete_executor_deduplicates_repeated_evidence_but_adds_distinct_patt
         response_identity=identity(),
     )
 
-    async def browser_runner(_url, _cookie):
+    async def browser_runner(_url, _cookie, _tls):
         return browser_stage
 
     executor = CompleteScanExecutor(
