@@ -1059,6 +1059,7 @@ async def _process_page(driver, url, *, raw, tls_trust=TLSTrust.TRUSTED):
     page = await driver.context.new_page()
     driver.page = page
     response = None
+    navigation_content = None
     navigation_timed_out = False
     certificate_session = None
     driver.route_state["policy_blocked"] = False
@@ -1089,29 +1090,28 @@ async def _process_page(driver, url, *, raw, tls_trust=TLSTrust.TRUSTED):
             except Exception:
                 pass
 
+        if raw and response is not None:
+            body = getattr(response, "body", None)
+            if callable(body):
+                try:
+                    navigation_content = await body()
+                except Exception:
+                    navigation_content = None
+
         await _stimulate_page(page)
         detections = (
             await _get_detections(driver, page.url, raw=True)
             if raw
             else await _get_detections(driver, page.url)
         )
-        content = b""
         evidence_metrics = None
         if raw:
             evidence_metrics = await _get_evidence_metrics(page)
-            body = getattr(response, "body", None)
-            if callable(body):
-                try:
-                    content = await body()
-                except Exception:
-                    content = b""
-            if not content:
-                content = (await page.content()).encode("utf-8")
         return (
             detections,
             page.url,
             response.status if response is not None else None,
-            content,
+            navigation_content,
             navigation_timed_out,
             evidence_metrics,
             driver.route_state["policy_blocked"],
@@ -1256,7 +1256,7 @@ async def process_url_evidence(driver, url, tls_trust=TLSTrust.TRUSTED):
             http_status=http_status,
             content_sha256=hashlib.sha256(content).hexdigest(),
         )
-        if http_status is not None
+        if http_status is not None and content is not None
         else None
     )
     return StageEvidence(
