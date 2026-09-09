@@ -260,11 +260,15 @@ def effective_cpu_count(host_count, affinity_count, cpuset, cpu_max):
             candidates.append(value)
 
     for cpuset_value in _controller_values(cpuset):
+        if cpuset_value and parse_cpu_set(cpuset_value) is None:
+            return 1
         cpuset_count = parse_cpu_set(cpuset_value)
         if cpuset_count:
             candidates.append(cpuset_count)
 
     for cpu_max_value in _controller_values(cpu_max):
+        if not _valid_cpu_max(cpu_max_value):
+            return 1
         quota_count = _quota_cpu_count(cpu_max_value)
         if quota_count:
             candidates.append(quota_count)
@@ -321,10 +325,13 @@ class SystemResourceProbe:
         *,
         cgroup_root=Path("/sys/fs/cgroup"),
         proc_cgroup_path=Path("/proc/self/cgroup"),
+        proc_mountinfo_path=Path("/proc/self/mountinfo"),
     ):
         self._cgroup_root = Path(cgroup_root)
         self._proc_cgroup_path = Path(proc_cgroup_path)
-        self._controller_directories_cache = None
+        self._proc_mountinfo_path = Path(proc_mountinfo_path)
+        self._controller_directories_cache = {}
+        self._cgroup_locations_cache = None
 
     def host_cpu_count(self):
         return os.cpu_count()
@@ -379,57 +386,172 @@ class SystemResourceProbe:
         statistics = os.statvfs(path)
         return statistics.f_bavail * statistics.f_frsize
 
-    def _controller_directories(self):
-        if self._controller_directories_cache is not None:
-            return self._controller_directories_cache
+    @staticmethod
+    def _mountinfo_path(value):
+        return value.replace("\\040", " ").replace("\\011", "\t").replace("\\134", "\\")
 
-        root = self._cgroup_root.resolve()
-        relative = None
+    def _cgroup_locations(self):
+        if self._cgroup_locations_cache is not None:
+            return self._cgroup_locations_cache
+
+        unified_path = None
+        controller_paths = {}
         try:
             lines = self._proc_cgroup_path.read_text(encoding="utf-8").splitlines()
         except OSError:
             lines = ()
         for line in lines:
-            hierarchy, _controllers, path = line.split(":", 2)
-            if hierarchy == "0":
-                relative = path.lstrip("/")
-                break
+            try:
+                hierarchy, controllers, path = line.split(":", 2)
+            except ValueError:
+                continue
+            if hierarchy == "0" and not controllers:
+                unified_path = path
+            for controller in controllers.split(","):
+                if controller:
+                    controller_paths[controller] = path
 
-        current = (root / relative).resolve() if relative is not None else root
+        v1_mounts = {}
+        try:
+            mount_lines = self._proc_mountinfo_path.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            mount_lines = ()
+        for line in mount_lines:
+            fields = line.split()
+            try:
+                separator = fields.index("-")
+            except ValueError:
+                continue
+            if len(fields) <= separator + 3 or fields[separator + 1] != "cgroup":
+                continue
+            mount_root = self._mountinfo_path(fields[3])
+            mount_point = Path(self._mountinfo_path(fields[4]))
+            options = set(fields[separator + 3].split(","))
+            options.update(fields[5].split(","))
+            for controller in controller_paths:
+                if controller in options:
+                    v1_mounts[controller] = (mount_point, mount_root)
+
+        self._cgroup_locations_cache = (unified_path, controller_paths, v1_mounts)
+        return self._cgroup_locations_cache
+
+    @staticmethod
+    def _relative_to_mount(path, mount_root):
+        path_parts = Path(path).parts
+        root_parts = Path(mount_root).parts
+        if path_parts[: len(root_parts)] != root_parts:
+            return None
+        return Path(*path_parts[len(root_parts) :])
+
+    @staticmethod
+    def _directory_chain(root, relative):
+        root = root.resolve()
+        current = (root / relative).resolve()
         try:
             current.relative_to(root)
         except ValueError:
             current = root
-
         directories = []
         while True:
             directories.append(current)
             if current == root:
                 break
             current = current.parent
-        self._controller_directories_cache = tuple(directories)
-        return self._controller_directories_cache
+        return tuple(directories)
+
+    @staticmethod
+    def _controller_for_name(name):
+        if name.startswith("cpu."):
+            return "cpu"
+        if name.startswith("cpuset."):
+            return "cpuset"
+        if name.startswith("memory."):
+            return "memory"
+        if name.startswith("pids."):
+            return "pids"
+        return None
+
+    def _controller_directories(self, name):
+        if name in self._controller_directories_cache:
+            return self._controller_directories_cache[name]
+
+        unified_path, controller_paths, v1_mounts = self._cgroup_locations()
+        controller = self._controller_for_name(name)
+        if controller in controller_paths and controller in v1_mounts:
+            mount_point, mount_root = v1_mounts[controller]
+            relative = self._relative_to_mount(
+                controller_paths[controller],
+                mount_root,
+            )
+            directories = (
+                self._directory_chain(mount_point, relative)
+                if relative is not None
+                else (mount_point.resolve(),)
+            )
+        else:
+            relative = unified_path.lstrip("/") if unified_path is not None else ""
+            directories = self._directory_chain(self._cgroup_root, relative)
+
+        self._controller_directories_cache[name] = directories
+        return directories
+
+    @staticmethod
+    def _v1_name(name):
+        return {
+            "cpuset.cpus.effective": "cpuset.cpus",
+            "memory.max": "memory.limit_in_bytes",
+            "memory.current": "memory.usage_in_bytes",
+        }.get(name, name)
+
+    def _read_cpu_max(self, directory):
+        try:
+            quota = (directory / "cpu.cfs_quota_us").read_text(encoding="utf-8").strip()
+            period = (directory / "cpu.cfs_period_us").read_text(encoding="utf-8").strip()
+        except OSError:
+            return None
+        return f"{'max' if quota == '-1' else quota} {period}"
 
     def controller_values(self, name):
         values = []
-        for directory in self._controller_directories():
+        for directory in self._controller_directories(name):
             try:
-                values.append((directory / name).read_text(encoding="utf-8").strip())
+                value = (directory / name).read_text(encoding="utf-8").strip()
             except OSError:
-                continue
+                if name == "cpu.max":
+                    value = self._read_cpu_max(directory)
+                else:
+                    try:
+                        value = (
+                            (directory / self._v1_name(name)).read_text(encoding="utf-8").strip()
+                        )
+                    except OSError:
+                        continue
+            if value is not None:
+                values.append(value)
         return tuple(values)
 
     def controller_pairs(self, maximum, current):
         pairs = []
-        for directory in self._controller_directories():
+        for directory in self._controller_directories(maximum):
             maximum_path = directory / maximum
+            if not maximum_path.exists():
+                maximum_path = directory / self._v1_name(maximum)
             if not maximum_path.exists():
                 continue
             try:
                 maximum_value = maximum_path.read_text(encoding="utf-8").strip()
-                current_value = (directory / current).read_text(encoding="utf-8").strip()
+                current_path = directory / current
+                if not current_path.exists():
+                    current_path = directory / self._v1_name(current)
+                current_value = current_path.read_text(encoding="utf-8").strip()
             except OSError:
                 current_value = None
+            if maximum == "memory.max":
+                parsed_maximum = _parse_controller_integer(maximum_value)
+                if maximum_value == "-1" or (
+                    parsed_maximum is not None and parsed_maximum >= 1 << 60
+                ):
+                    maximum_value = "max"
             pairs.append((maximum_value, current_value))
         return tuple(pairs)
 
