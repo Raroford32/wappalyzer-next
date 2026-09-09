@@ -22,6 +22,7 @@ from wappalyzer.core.analyzer import (
     http_scan,
 )
 from wappalyzer.core.requester import DEFAULT_READ_TIMEOUT, get_response
+from wappalyzer.core.regex_workers import RegexWorkerPool
 from wappalyzer.evidence import StageEvidence, merge_stage_evidence
 from wappalyzer.models import (
     FailureCode,
@@ -122,7 +123,7 @@ def _http_scan_job(url, scan_type, cookie, timeout, asset_workers):
     )
 
 
-def _static_stage_job(url, cookie, timeout, asset_workers):
+def _static_stage_job(url, cookie, timeout, asset_workers, regex_pool=None):
     deadline = time.monotonic() + timeout
     response = get_response(url, cookie, timeout=timeout)
     if response is None:
@@ -133,6 +134,8 @@ def _static_stage_job(url, cookie, timeout, asset_workers):
         timeout=timeout,
         deadline=deadline,
         asset_workers=asset_workers,
+        regex_pool=regex_pool,
+        regex_timeout=timeout,
     )
 
 
@@ -295,6 +298,7 @@ class CompleteScanExecutor:
         timeout=DEFAULT_READ_TIMEOUT,
         static_workers=1,
         asset_workers=1,
+        regex_pool=None,
     ):
         if not callable(static_runner):
             raise TypeError("static_runner must be callable")
@@ -310,10 +314,39 @@ class CompleteScanExecutor:
         self.browser_runner = browser_runner
         self.timeout = timeout
         self.asset_workers = asset_workers
+        self._default_static_runner = static_runner is _static_stage_job
+        self._regex_pool = (
+            regex_pool
+            if regex_pool is not None
+            else RegexWorkerPool(
+                workers=static_workers,
+                wall_timeout=timeout,
+                cpu_seconds=max(1, int(timeout)),
+            )
+            if self._default_static_runner
+            else None
+        )
+        self._owns_regex_pool = regex_pool is None and self._regex_pool is not None
         self._static_executor = concurrent.futures.ThreadPoolExecutor(
             max_workers=static_workers,
         )
         self._closed = False
+
+    def _run_static(self, url, cookie):
+        if self._default_static_runner:
+            return self.static_runner(
+                url,
+                cookie,
+                self.timeout,
+                self.asset_workers,
+                self._regex_pool,
+            )
+        return self.static_runner(
+            url,
+            cookie,
+            self.timeout,
+            self.asset_workers,
+        )
 
     @staticmethod
     def _failed_stage(name, error):
@@ -353,11 +386,9 @@ class CompleteScanExecutor:
         loop = asyncio.get_running_loop()
         static_future = loop.run_in_executor(
             self._static_executor,
-            self.static_runner,
+            self._run_static,
             url,
             cookie,
-            self.timeout,
-            self.asset_workers,
         )
         browser_future = asyncio.ensure_future(self.browser_runner(url, cookie))
         static_value, browser_value = await asyncio.gather(
@@ -381,6 +412,8 @@ class CompleteScanExecutor:
             return
         self._closed = True
         self._static_executor.shutdown(wait=True, cancel_futures=True)
+        if self._owns_regex_pool:
+            self._regex_pool.close()
 
     def __enter__(self):
         if self._closed:

@@ -19,6 +19,7 @@ from wappalyzer.core.matcher import (
     match_dict,
     parse_pattern,
 )
+from wappalyzer.core.regex_workers import RegexTimeoutError, RegexWorkerError
 from wappalyzer.core.requester import get_response
 from wappalyzer.evidence import RawDetection, StageEvidence, resolve_raw_detections
 from wappalyzer.models import (
@@ -26,6 +27,7 @@ from wappalyzer.models import (
     ChannelOwner,
     EvidenceLimit,
     EvidenceTruncation,
+    FailureCode,
     ResponseIdentity,
     StageName,
     StageStatus,
@@ -592,6 +594,8 @@ def analyze_static_stage(
     timeout=30,
     deadline=None,
     asset_workers=None,
+    regex_pool=None,
+    regex_timeout=None,
 ):
     prepare_matchers()
     evidence = collect_evidence(
@@ -602,10 +606,43 @@ def analyze_static_stage(
         deadline=deadline,
         asset_workers=asset_workers,
     )
-    detections = collect_raw_detections(evidence, owner=ChannelOwner.STATIC)
+    worker_limits = {}
+    error_codes = ()
+    try:
+        detections = (
+            regex_pool.run(
+                collect_raw_detections,
+                evidence,
+                ChannelOwner.STATIC,
+                timeout=regex_timeout or timeout,
+            )
+            if regex_pool is not None
+            else collect_raw_detections(evidence, owner=ChannelOwner.STATIC)
+        )
+    except RegexTimeoutError:
+        detections = ()
+        error_codes = (FailureCode.SCAN_TIMEOUT,)
+        worker_limits = {
+            channel: (EvidenceLimit.TIMER, EvidenceLimit.WORKER)
+            for channel, registration in CHANNEL_REGISTRY.items()
+            if registration.owner is ChannelOwner.STATIC
+        }
+    except RegexWorkerError:
+        detections = ()
+        error_codes = (FailureCode.WORKER_FAILURE,)
+        worker_limits = {
+            channel: (EvidenceLimit.WORKER,)
+            for channel, registration in CHANNEL_REGISTRY.items()
+            if registration.owner is ChannelOwner.STATIC
+        }
+    truncation_limits = dict(evidence["_truncations"])
+    for channel, limits in worker_limits.items():
+        truncation_limits[channel] = tuple(
+            dict.fromkeys((*truncation_limits.get(channel, ()), *limits))
+        )
     truncations = tuple(
         EvidenceTruncation(channel=channel, limits=limits)
-        for channel, limits in evidence["_truncations"].items()
+        for channel, limits in truncation_limits.items()
         if CHANNEL_REGISTRY[channel].owner is ChannelOwner.STATIC
     )
     status = (
@@ -624,6 +661,7 @@ def analyze_static_stage(
             content_sha256=hashlib.sha256(response.content).hexdigest(),
         ),
         detections=detections,
+        error_codes=error_codes,
         truncations=truncations,
     )
 
