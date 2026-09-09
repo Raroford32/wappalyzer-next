@@ -5,9 +5,7 @@ from pathlib import Path
 
 import pytest
 
-SCHEMA_PATH = (
-    Path(__file__).parent.parent / "wappalyzer" / "schemas" / "scan-run-v1.json"
-)
+SCHEMA_PATH = Path(__file__).parent.parent / "wappalyzer" / "schemas" / "scan-run-v1.json"
 DIGEST = "a" * 64
 
 
@@ -55,9 +53,7 @@ def _validate(instance, schema, root):
 
     expected_type = schema.get("type")
     if expected_type is not None:
-        expected_types = (
-            expected_type if isinstance(expected_type, list) else [expected_type]
-        )
+        expected_types = expected_type if isinstance(expected_type, list) else [expected_type]
         checks = {
             "array": lambda value: isinstance(value, list),
             "boolean": lambda value: type(value) is bool,

@@ -5,7 +5,6 @@ from enum import Enum
 from types import MappingProxyType
 from typing import Iterable, Mapping, Optional, Sequence, Tuple
 
-
 CANONICAL_SCHEMA_VERSION = "scan-run-v1"
 
 
@@ -573,10 +572,7 @@ _FAILURE_RANK = {code: index for index, code in enumerate(FailureCode)}
 
 
 def _ordered_errors(error_codes: Sequence[FailureCode]) -> list:
-    return [
-        code.value
-        for code in sorted(set(error_codes), key=lambda code: _FAILURE_RANK[code])
-    ]
+    return [code.value for code in sorted(set(error_codes), key=lambda code: _FAILURE_RANK[code])]
 
 
 def _technology_document(technology: Technology) -> dict:
@@ -648,9 +644,7 @@ def _canonical_document(record: CanonicalRecord) -> dict:
             "line_digest": record.occurrence.line_digest,
         },
         "endpoint": (
-            {"address": endpoint.address, "port": endpoint.port}
-            if endpoint is not None
-            else None
+            {"address": endpoint.address, "port": endpoint.port} if endpoint is not None else None
         ),
         "status": record.status.value,
         "error_codes": _ordered_errors(record.error_codes),
