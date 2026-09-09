@@ -35,18 +35,16 @@ from wappalyzer.models import (
     StageResult,
     StageStatus,
     StaleClaimError,
+    Technology,
     TLSMetadata,
     TLSTrust,
-    TargetOccurrence,
-    Technology,
     canonical_json_bytes,
 )
-from wappalyzer.output import CanonicalProjector, publish_manifest
+from wappalyzer.output import CanonicalProjector
 from wappalyzer.runstore import (
     AcquiredGeneration,
     ArtifactSafetyError,
     CompletionPreconditionError,
-    EndpointClaim,
     GenerationLockedError,
     GenerationRepository,
     IngestionStateError,
@@ -55,8 +53,8 @@ from wappalyzer.runstore import (
     RunStateError,
     RunStore,
     RunStoreError,
-    SQLiteSettings,
     SourceChangedError,
+    SQLiteSettings,
 )
 
 
