@@ -189,8 +189,10 @@ def test_effective_cpu_is_the_minimum_positive_host_affinity_cpuset_and_quota():
             cpuset="malformed",
             cpu_max="malformed",
         )
-        == 8
+        == 1
     )
+    assert effective_cpu_count(8, 8, "0-7", "50000 100000") == 1
+    assert effective_cpu_count(8, 8, "0-7", "100000 0") == 1
     assert effective_cpu_count(None, None, None, None) == 1
 
 
@@ -300,6 +302,57 @@ def test_system_probe_resolves_current_cgroup_and_all_ancestors(tmp_path):
         "max 100000",
         "150000 100000",
     )
+
+
+def test_system_probe_supports_cgroup_v1_controller_mounts(tmp_path):
+    mounts = {}
+    mount_lines = []
+    for index, controller in enumerate(("cpu", "cpuset", "memory", "pids"), 30):
+        mount = tmp_path / controller
+        leaf = mount / "scanner"
+        leaf.mkdir(parents=True)
+        mounts[controller] = leaf
+        options = "cpu,cpuacct" if controller == "cpu" else controller
+        mount_lines.append(f"{index} 23 0:{index} / {mount} rw - cgroup cgroup rw,{options}")
+
+    (mounts["cpu"] / "cpu.cfs_quota_us").write_text("150000", encoding="utf-8")
+    (mounts["cpu"] / "cpu.cfs_period_us").write_text("100000", encoding="utf-8")
+    (mounts["cpuset"] / "cpuset.cpus").write_text("0-3", encoding="utf-8")
+    (mounts["memory"] / "memory.limit_in_bytes").write_text(
+        str(3 * GIB),
+        encoding="utf-8",
+    )
+    (mounts["memory"] / "memory.usage_in_bytes").write_text(
+        str(GIB),
+        encoding="utf-8",
+    )
+    (mounts["pids"] / "pids.max").write_text("20", encoding="utf-8")
+    (mounts["pids"] / "pids.current").write_text("5", encoding="utf-8")
+    proc_cgroup = tmp_path / "self.cgroup"
+    proc_cgroup.write_text(
+        "\n".join(
+            (
+                "2:cpu,cpuacct:/scanner",
+                "3:cpuset:/scanner",
+                "4:memory:/scanner",
+                "5:pids:/scanner",
+            )
+        ),
+        encoding="utf-8",
+    )
+    mountinfo = tmp_path / "mountinfo"
+    mountinfo.write_text("\n".join(mount_lines), encoding="utf-8")
+
+    probe = SystemResourceProbe(
+        cgroup_root=tmp_path / "unused-v2",
+        proc_cgroup_path=proc_cgroup,
+        proc_mountinfo_path=mountinfo,
+    )
+
+    assert probe.controller_values("cpu.max") == ("150000 100000",)
+    assert probe.controller_values("cpuset.cpus.effective") == ("0-3",)
+    assert probe.controller_pairs("memory.max", "memory.current") == ((str(3 * GIB), str(GIB)),)
+    assert probe.controller_pairs("pids.max", "pids.current") == (("20", "5"),)
 
 
 def test_snapshot_uses_tightest_limits_across_cgroup_ancestors():
