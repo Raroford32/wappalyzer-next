@@ -12,6 +12,7 @@ from wappalyzer.resources import (
     ResourceProfile,
     ResourceRequest,
     ResourceSnapshot,
+    SystemResourceProbe,
     WorkerCounts,
     autosize,
     capture_snapshot,
@@ -273,6 +274,54 @@ def test_snapshot_records_malformed_finite_memory_and_process_controllers():
     assert "pids.current" in " ".join(snapshot.reasons)
 
 
+def test_system_probe_resolves_current_cgroup_and_all_ancestors(tmp_path):
+    cgroup_root = tmp_path / "cgroup"
+    leaf = cgroup_root / "system.slice" / "scanner.service"
+    leaf.mkdir(parents=True)
+    (leaf / "cpu.max").write_text("max 100000", encoding="utf-8")
+    (leaf.parent / "cpu.max").write_text("150000 100000", encoding="utf-8")
+    proc_cgroup = tmp_path / "self.cgroup"
+    proc_cgroup.write_text("0::/system.slice/scanner.service\n", encoding="utf-8")
+
+    probe = SystemResourceProbe(
+        cgroup_root=cgroup_root,
+        proc_cgroup_path=proc_cgroup,
+    )
+
+    assert probe.controller_values("cpu.max") == (
+        "max 100000",
+        "150000 100000",
+    )
+
+
+def test_snapshot_uses_tightest_limits_across_cgroup_ancestors():
+    class HierarchyProbe(FakeProbe):
+        def controller_values(self, name):
+            return {
+                "cpuset.cpus.effective": ("0-7",),
+                "cpu.max": ("max 100000", "150000 100000"),
+            }.get(name, ())
+
+        def controller_pairs(self, maximum, current):
+            return {
+                ("memory.max", "memory.current"): (
+                    ("max", str(GIB)),
+                    (str(3 * GIB), str(GIB)),
+                ),
+                ("pids.max", "pids.current"): (
+                    ("max", "10"),
+                    ("20", "5"),
+                ),
+            }.get((maximum, current), ())
+
+    snapshot = capture_snapshot(HierarchyProbe(), artifact_path=Path("/artifacts"))
+
+    assert snapshot.cpu_count == 2
+    assert snapshot.memory_bytes == 1536 * MIB
+    assert snapshot.processes == 15
+    assert snapshot.processes_used == 10
+
+
 def test_requests_snapshots_and_plans_are_immutable_nonnegative_vectors():
     request = ResourceRequest(
         cpu=1,
@@ -344,6 +393,16 @@ def test_missing_shared_memory_mount_uses_the_explicit_temp_budget():
     )
 
     assert plan.selected == WorkerCounts(discovery=1, static=1, browser=2)
+
+
+def test_unknown_memory_conservatively_selects_one_browser_worker():
+    plan = autosize(
+        resource_snapshot(memory_bytes=None),
+        resource_profile(),
+        requested=WorkerCounts(discovery=20, static=20, browser=20),
+    )
+
+    assert plan.selected == WorkerCounts(discovery=20, static=4, browser=1)
 
 
 @pytest.mark.parametrize(
