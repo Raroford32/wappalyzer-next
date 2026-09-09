@@ -4,7 +4,13 @@ from requests.cookies import cookiejar_from_dict
 from requests.structures import CaseInsensitiveDict
 
 from wappalyzer.core import analyzer, utils
-from wappalyzer.models import ChannelOwner, EvidenceLimit
+from wappalyzer.core.regex_workers import RegexTimeoutError
+from wappalyzer.models import (
+    ChannelOwner,
+    EvidenceLimit,
+    FailureCode,
+    StageStatus,
+)
 
 HTML = b"""
 <!doctype html>
@@ -165,6 +171,48 @@ def test_complete_static_stage_emits_only_static_owned_raw_channels(monkeypatch)
     )
 
     assert [(item.technology, item.channel) for item in detections] == [("RobotsTech", "robots")]
+
+
+def test_static_stage_delegates_matching_to_isolated_worker_pool():
+    calls = []
+
+    class RecordingPool:
+        def run(self, function, *args, timeout):
+            calls.append((function, args[1], timeout))
+            return function(*args)
+
+    result = analyzer.analyze_static_stage(
+        response(),
+        scan_type="fast",
+        timeout=7,
+        regex_pool=RecordingPool(),
+    )
+
+    assert calls == [(analyzer.collect_raw_detections, ChannelOwner.STATIC, 7)]
+    assert result.status is StageStatus.SUCCESS_EMPTY
+
+
+def test_static_regex_timeout_is_auditable_partial_evidence():
+    class TimingOutPool:
+        def run(self, _function, *_args, timeout):
+            raise RegexTimeoutError(str(timeout))
+
+    result = analyzer.analyze_static_stage(
+        response(),
+        scan_type="fast",
+        timeout=7,
+        regex_pool=TimingOutPool(),
+    )
+
+    assert result.status is StageStatus.PARTIAL
+    assert result.error_codes == (FailureCode.SCAN_TIMEOUT,)
+    assert {truncation.channel for truncation in result.truncations} == {
+        "certIssuer",
+        "dns",
+        "probe",
+        "robots",
+    }
+    assert all(EvidenceLimit.WORKER in item.limits for item in result.truncations)
 
 
 def test_primary_request_failure_is_not_reported_as_empty_success(monkeypatch):
