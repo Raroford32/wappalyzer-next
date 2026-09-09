@@ -63,7 +63,7 @@ def test_complete_executor_unions_every_owned_channel_once():
         return stage(StageName.BROWSER, browser_channels)
 
     executor = CompleteScanExecutor(
-        static_runner=lambda _url, _cookie, _timeout, _workers: stage(
+        static_runner=lambda _url, _cookie, _timeout, _workers, _tls: stage(
             StageName.STATIC,
             static_channels,
         ),
@@ -97,7 +97,7 @@ def test_complete_executor_preserves_completed_stage_when_peer_fails():
         raise asyncio.TimeoutError()
 
     executor = CompleteScanExecutor(
-        static_runner=lambda _url, _cookie, _timeout, _workers: static_stage,
+        static_runner=lambda _url, _cookie, _timeout, _workers, _tls: static_stage,
         browser_runner=failing_browser,
         timeout=5,
     )
@@ -139,7 +139,7 @@ def test_complete_executor_deduplicates_repeated_evidence_but_adds_distinct_patt
         return browser_stage
 
     executor = CompleteScanExecutor(
-        static_runner=lambda _url, _cookie, _timeout, _workers: static_stage,
+        static_runner=lambda _url, _cookie, _timeout, _workers, _tls: static_stage,
         browser_runner=browser_runner,
         timeout=5,
     )
