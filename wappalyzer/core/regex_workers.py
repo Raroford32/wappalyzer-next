@@ -21,6 +21,10 @@ def _configure_worker(cpu_seconds, memory_bytes):
         resource.setrlimit(resource.RLIMIT_AS, (memory_bytes, memory_bytes))
 
 
+def _worker_ready():
+    return True
+
+
 def _terminate_executor(executor):
     processes = tuple((getattr(executor, "_processes", None) or {}).values())
     for process in processes:
@@ -46,6 +50,7 @@ class RegexWorkerPool:
         wall_timeout,
         cpu_seconds=None,
         memory_bytes=None,
+        startup_timeout=30,
     ):
         if isinstance(workers, bool) or not isinstance(workers, int) or workers < 1:
             raise ValueError("workers must be a positive integer")
@@ -63,23 +68,36 @@ class RegexWorkerPool:
             isinstance(memory_bytes, bool) or not isinstance(memory_bytes, int) or memory_bytes < 1
         ):
             raise ValueError("memory_bytes must be a positive integer or None")
+        if (
+            isinstance(startup_timeout, bool)
+            or not isinstance(startup_timeout, (int, float))
+            or startup_timeout <= 0
+        ):
+            raise ValueError("startup_timeout must be positive")
 
         self.workers = workers
         self.wall_timeout = float(wall_timeout)
         self.cpu_seconds = cpu_seconds
         self.memory_bytes = memory_bytes
+        self.startup_timeout = float(startup_timeout)
         self._slots = threading.BoundedSemaphore(workers)
         self._lock = threading.RLock()
         self._executor = None
         self._closed = False
 
     def _new_executor(self):
-        return concurrent.futures.ProcessPoolExecutor(
+        executor = concurrent.futures.ProcessPoolExecutor(
             max_workers=self.workers,
             mp_context=multiprocessing.get_context("spawn"),
             initializer=_configure_worker,
             initargs=(self.cpu_seconds, self.memory_bytes),
         )
+        try:
+            executor.submit(_worker_ready).result(timeout=self.startup_timeout)
+        except BaseException as error:
+            _terminate_executor(executor)
+            raise RegexWorkerError("regex worker pool failed to start") from error
+        return executor
 
     def _current_executor(self):
         with self._lock:
