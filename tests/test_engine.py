@@ -407,7 +407,7 @@ def test_direct_runtime_validates_public_configuration_before_starting_workers(m
     def forbidden_backend(**_kwargs):
         raise AssertionError("worker backend started during validation")
 
-    monkeypatch.setattr(engine_module, "_FullScanBackend", forbidden_backend)
+    monkeypatch.setattr(engine_module, "FullScanBackend", forbidden_backend)
 
     for invalid_workers in (True, "1", 0):
         with pytest.raises(ValueError, match="workers"):
@@ -433,7 +433,7 @@ def test_direct_runtime_resource_preflight_rejects_insufficient_capacity(monkeyp
     def forbidden_backend(**_kwargs):
         raise AssertionError("worker backend started without resource capacity")
 
-    monkeypatch.setattr(engine_module, "_FullScanBackend", forbidden_backend)
+    monkeypatch.setattr(engine_module, "FullScanBackend", forbidden_backend)
     constrained = resource_snapshot(
         memory_bytes=0,
         file_descriptors=0,
@@ -467,7 +467,7 @@ def test_direct_runtime_rejects_resource_plan_with_zero_stage_capacity(monkeypat
     monkeypatch.setattr(engine_module, "autosize", lambda *_args, **_kwargs: plan)
     monkeypatch.setattr(
         engine_module,
-        "_FullScanBackend",
+        "FullScanBackend",
         lambda **_kwargs: pytest.fail("worker backend started with zero stage capacity"),
     )
 
@@ -535,7 +535,7 @@ def test_direct_runtime_delegates_transport_scan_and_cleanup(monkeypatch):
         return ("discovery-result",)
 
     monkeypatch.setattr(engine_module, "capture_snapshot", lambda: snapshot)
-    monkeypatch.setattr(engine_module, "_FullScanBackend", FakeBrowserBackend)
+    monkeypatch.setattr(engine_module, "FullScanBackend", FakeBrowserBackend)
     monkeypatch.setattr(engine_module, "CompleteScanExecutor", FakeCompleteExecutor)
     monkeypatch.setattr(engine_module, "ExhaustiveEndpointScanner", FakeEndpointScanner)
     monkeypatch.setattr(engine_module, "DirectTransport", FakeTransport)

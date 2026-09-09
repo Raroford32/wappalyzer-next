@@ -21,7 +21,7 @@ from wappalyzer.resources import (
     autosize,
     capture_snapshot,
 )
-from wappalyzer.scanner import CompleteScanExecutor, _FullScanBackend
+from wappalyzer.scanner import CompleteScanExecutor, FullScanBackend
 
 
 def _nonlive_result(discovery):
@@ -187,7 +187,7 @@ class DirectScanRuntime:
 
         self.resource_plan = plan
         self.transport_limits = transport_limits or TransportLimits()
-        self.browser_backend = _FullScanBackend(
+        self.browser_backend = FullScanBackend(
             workers=plan.selected.browser,
             timeout=timeout,
             strict_tls=True,

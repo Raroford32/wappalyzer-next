@@ -152,7 +152,7 @@ def test_empty_browser_pool_fails_instead_of_returning_empty_success():
         async def grow_to(self, size):
             return None
 
-    backend = scanner._FullScanBackend()
+    backend = scanner.FullScanBackend()
     assert backend._pool_lock is None
     backend.pool = EmptyPool()
 

@@ -180,7 +180,7 @@ class _LoopRunner:
         self.thread.join()
 
 
-class _FullScanBackend:
+class FullScanBackend:
     def __init__(
         self,
         workers=1,
@@ -604,7 +604,7 @@ class Wappalyzer:
 
             if not self._runner:
                 self._runner = _LoopRunner()
-                self._full_backend = _FullScanBackend(
+                self._full_backend = FullScanBackend(
                     workers=self.workers,
                     timeout=self.timeout,
                 )
