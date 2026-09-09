@@ -1,7 +1,15 @@
+from types import SimpleNamespace
+
 import pytest
 
-from wappalyzer.core.transport import RequestPurpose, TransportResult, TransportState
-from wappalyzer.discovery import DiscoveryState, discover_protocols
+import wappalyzer.discovery as discovery_module
+from wappalyzer.core.transport import (
+    RequestPurpose,
+    TransportResult,
+    TransportState,
+    sanitize_diagnostic,
+)
+from wappalyzer.discovery import DiscoveryResult, DiscoveryState, discover_protocols
 from wappalyzer.models import Endpoint, FailureCode, Protocol, TLSMetadata, TLSTrust
 
 
@@ -284,3 +292,78 @@ def test_connection_refusal_is_unavailable_not_timeout_or_success():
         FailureCode.UNREACHABLE,
     ]
     assert all(result.http_status is None for result in results)
+
+
+def test_discovery_result_validates_types_and_state_invariants():
+    valid = {
+        "protocol": Protocol.HTTP,
+        "state": DiscoveryState.LIVE,
+        "requested_url": "http://192.0.2.10/",
+        "http_status": 200,
+        "tls": TLSMetadata(False, TLSTrust.NOT_APPLICABLE),
+    }
+    invalid_results = [
+        ({"protocol": "http"}, TypeError),
+        ({"state": "live"}, TypeError),
+        ({"requested_url": 3}, ValueError),
+        ({"requested_url": ""}, ValueError),
+        ({"http_status": True}, ValueError),
+        ({"http_status": 99}, ValueError),
+        ({"tls": object()}, TypeError),
+        ({"failure_code": "unreachable"}, TypeError),
+        ({"diagnostic": object()}, TypeError),
+        ({"http_status": None}, ValueError),
+        ({"state": DiscoveryState.UNAVAILABLE}, ValueError),
+    ]
+
+    for replacement, exception_type in invalid_results:
+        values = dict(valid)
+        values.update(replacement)
+        with pytest.raises(exception_type):
+            DiscoveryResult(**values)
+
+
+def test_non_response_state_rejects_response_and_unknown_states():
+    with pytest.raises(ValueError, match="not a failure"):
+        discovery_module._non_response_state(response(200))
+
+    with pytest.raises(ValueError, match="unsupported transport state"):
+        discovery_module._non_response_state(SimpleNamespace(state="future-state"))
+
+
+def test_repeated_untrusted_confirmation_stays_indeterminate_and_preserves_diagnostic():
+    diagnostic = sanitize_diagnostic(
+        code=FailureCode.TLS_UNTRUSTED,
+        url="https://192.0.2.10:8443/",
+    )
+    untrusted = TransportResult(
+        state=TransportState.TLS_UNTRUSTED,
+        failure_code=FailureCode.TLS_UNTRUSTED,
+        diagnostic=diagnostic,
+    )
+    transport = ScriptedTransport(
+        (
+            failure(TransportState.UNAVAILABLE, FailureCode.UNREACHABLE),
+            untrusted,
+            failure(TransportState.TLS_UNTRUSTED, FailureCode.TLS_UNTRUSTED),
+        )
+    )
+
+    _http, https = discover_protocols(Endpoint("192.0.2.10", 8443), transport)
+
+    assert https.state is DiscoveryState.INDETERMINATE
+    assert https.failure_code is FailureCode.TLS_UNTRUSTED
+    assert https.diagnostic is diagnostic
+    assert https.tls == TLSMetadata(True, TLSTrust.UNTRUSTED)
+
+
+@pytest.mark.parametrize(
+    ("endpoint", "transport"),
+    [
+        (object(), ScriptedTransport(())),
+        (Endpoint("192.0.2.10", 80), object()),
+    ],
+)
+def test_discover_protocols_validates_dependencies(endpoint, transport):
+    with pytest.raises(TypeError):
+        discover_protocols(endpoint, transport)

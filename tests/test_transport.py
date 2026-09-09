@@ -1,11 +1,14 @@
 import json
 import ssl
 from dataclasses import asdict
+from types import SimpleNamespace
 
 import pytest
 import requests
 
+import wappalyzer.core.transport as transport_module
 from wappalyzer.core.transport import (
+    Diagnostic,
     DestinationBlocked,
     DirectTransport,
     EgressPolicy,
@@ -44,12 +47,17 @@ class RecordingSession:
         self.calls = []
         self.trust_env = True
         self.auth = ("ambient-user", "ambient-password")
+        self.cert = "ambient-cert"
+        self.verify = False
         self.cookies = requests.cookies.cookiejar_from_dict({"ambient-cookie": "secret-cookie"})
         self.headers = {
             "Authorization": "Bearer secret-authorization",
             "Cookie": "ambient-cookie=secret-cookie",
             "User-Agent": "ambient-agent",
         }
+        self.params = {"ambient": "parameter"}
+        self.proxies = {"https": "http://ambient-proxy.invalid"}
+        self.closed = False
 
     def request(self, method, url, **kwargs):
         self.calls.append({"method": method, "url": url, **kwargs})
@@ -60,6 +68,9 @@ class RecordingSession:
 
     def get(self, url, **kwargs):
         return self.request("GET", url, **kwargs)
+
+    def close(self):
+        self.closed = True
 
 
 def explicit_policy(address="127.0.0.1", port=8443):
@@ -495,3 +506,406 @@ def test_transport_applies_egress_policy_before_opening_a_connection():
     assert blocked.state is TransportState.UNAVAILABLE
     assert blocked.failure_code is FailureCode.UNREACHABLE
     assert len(session.calls) == 1
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"connect_timeout": True},
+        {"connect_timeout": "1"},
+        {"connect_timeout": float("inf")},
+        {"connect_timeout": 0},
+        {"overall_timeout": False},
+        {"overall_timeout": None},
+        {"overall_timeout": float("nan")},
+        {"overall_timeout": -1},
+    ],
+)
+def test_transport_limits_reject_invalid_timeouts(kwargs):
+    with pytest.raises(ValueError, match="must be a finite positive number"):
+        TransportLimits(**kwargs)
+
+
+@pytest.mark.parametrize("max_body_bytes", [True, 1.5, -1])
+def test_transport_limits_reject_invalid_body_limits(max_body_bytes):
+    with pytest.raises(ValueError, match="must be a non-negative integer"):
+        TransportLimits(max_body_bytes=max_body_bytes)
+
+
+def test_transport_limits_normalize_integer_timeouts():
+    limits = TransportLimits(connect_timeout=1, overall_timeout=2, max_body_bytes=0)
+
+    assert limits.connect_timeout == 1.0
+    assert limits.overall_timeout == 2.0
+
+
+@pytest.mark.parametrize(
+    ("replacement", "exception_type"),
+    [
+        ({"code": "unreachable"}, TypeError),
+        ({"url": 3}, TypeError),
+        ({"message": object()}, TypeError),
+        ({"digest": b"0" * 64}, ValueError),
+        ({"digest": "0" * 63}, ValueError),
+        ({"digest": "g" * 64}, ValueError),
+    ],
+)
+def test_diagnostic_validates_every_field(replacement, exception_type):
+    kwargs = {
+        "code": FailureCode.UNREACHABLE,
+        "url": "https://example.test/",
+        "message": "unreachable",
+        "digest": "0" * 64,
+    }
+    kwargs.update(replacement)
+
+    with pytest.raises(exception_type):
+        Diagnostic(**kwargs)
+
+
+def test_transport_result_validates_types_and_failure_invariants():
+    diagnostic = sanitize_diagnostic(
+        code=FailureCode.DISCOVERY_TIMEOUT,
+        url="https://example.test/",
+    )
+    invalid_results = [
+        ({"state": "response", "status_code": 200}, TypeError),
+        ({"state": TransportState.RESPONSE, "status_code": 200, "body": "body"}, TypeError),
+        (
+            {
+                "state": TransportState.UNAVAILABLE,
+                "failure_code": "unreachable",
+            },
+            TypeError,
+        ),
+        (
+            {
+                "state": TransportState.UNAVAILABLE,
+                "failure_code": FailureCode.UNREACHABLE,
+                "diagnostic": object(),
+            },
+            TypeError,
+        ),
+        (
+            {
+                "state": TransportState.TIMEOUT,
+                "failure_code": FailureCode.UNREACHABLE,
+                "diagnostic": diagnostic,
+            },
+            ValueError,
+        ),
+        ({"state": TransportState.RESPONSE, "status_code": True}, ValueError),
+        ({"state": TransportState.RESPONSE, "status_code": 99}, ValueError),
+        (
+            {
+                "state": TransportState.RESPONSE,
+                "status_code": 200,
+                "failure_code": FailureCode.UNREACHABLE,
+            },
+            ValueError,
+        ),
+        (
+            {
+                "state": TransportState.UNAVAILABLE,
+                "status_code": 503,
+                "failure_code": FailureCode.UNREACHABLE,
+            },
+            ValueError,
+        ),
+        (
+            {
+                "state": TransportState.UNAVAILABLE,
+                "body": b"partial",
+                "failure_code": FailureCode.UNREACHABLE,
+            },
+            ValueError,
+        ),
+        ({"state": TransportState.UNAVAILABLE}, ValueError),
+    ]
+
+    for kwargs, exception_type in invalid_results:
+        with pytest.raises(exception_type):
+            TransportResult(**kwargs)
+
+
+def test_default_resolver_normalizes_and_deduplicates_dns_answers(monkeypatch):
+    records = (
+        (transport_module.socket.AF_INET, 0, 0, "", ("8.8.8.8", 0)),
+        (transport_module.socket.AF_INET, 0, 0, "", ("8.8.8.8", 0)),
+        (
+            transport_module.socket.AF_INET6,
+            0,
+            0,
+            "",
+            ("2606:4700:4700:0:0:0:0:1111", 0, 0, 0),
+        ),
+    )
+
+    def getaddrinfo(host, port, *, type):
+        assert (host, port, type) == ("resolver.test", None, transport_module.socket.SOCK_STREAM)
+        return records
+
+    monkeypatch.setattr(transport_module.socket, "getaddrinfo", getaddrinfo)
+
+    assert transport_module._default_resolver("resolver.test") == (
+        "8.8.8.8",
+        "2606:4700:4700::1111",
+    )
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        None,
+        "",
+        "https://example.test/\n",
+        "https://example.test\\private",
+        "https://example.test:invalid/",
+        "ftp://example.test/",
+        "https://percent%25.test/",
+        "https://./",
+        "http://127.0.0.1:0/",
+    ],
+)
+def test_egress_policy_rejects_malformed_or_unsupported_destinations(url):
+    policy = EgressPolicy((), resolver=lambda _host: ("8.8.8.8",))
+
+    with pytest.raises(DestinationBlocked):
+        policy.authorize(url, RequestPurpose.DIRECT)
+
+
+def test_egress_policy_validates_configuration_and_purpose():
+    with pytest.raises(TypeError, match="Endpoint"):
+        EgressPolicy(("not-an-endpoint",))
+    with pytest.raises(TypeError, match="resolver"):
+        EgressPolicy((), resolver=None)
+
+    policy = EgressPolicy(())
+    with pytest.raises(TypeError, match="purpose"):
+        policy.authorize("https://8.8.8.8/", "direct")
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://metadata.google.internal/",
+        "https://[::ffff:127.0.0.1]/",
+    ],
+)
+def test_egress_policy_blocks_metadata_aliases_and_ipv4_mapped_private_addresses(url):
+    policy = EgressPolicy((), resolver=lambda _host: ("8.8.8.8",))
+
+    with pytest.raises(DestinationBlocked):
+        policy.authorize(url, RequestPurpose.SUBRESOURCE)
+
+
+def test_egress_policy_allows_ipv4_mapped_public_addresses():
+    policy = EgressPolicy(())
+
+    assert policy.authorize(
+        "https://[::ffff:8.8.8.8]/",
+        RequestPurpose.REDIRECT,
+    ) == ("::ffff:808:808",)
+
+
+@pytest.mark.parametrize(
+    "resolver",
+    [
+        lambda _host: (_ for _ in ()).throw(OSError("dns unavailable")),
+        lambda _host: ("not-an-address",),
+    ],
+)
+def test_egress_policy_converts_dns_failures_to_destination_blocked(resolver):
+    policy = EgressPolicy((), resolver=resolver)
+
+    with pytest.raises(DestinationBlocked) as captured:
+        policy.authorize("https://dns-failure.test/", RequestPurpose.REDIRECT)
+
+    assert captured.value.failure_code is FailureCode.UNREACHABLE
+
+
+@pytest.mark.parametrize(
+    ("url", "expected"),
+    [
+        (object(), "<invalid-url>"),
+        ("https://example.test:invalid/", "<invalid-url>"),
+        ("ftp://example.test/path", "<invalid-url>"),
+    ],
+)
+def test_url_sanitizer_rejects_non_http_or_malformed_values(url, expected):
+    assert sanitize_url(url) == expected
+
+
+class ExplodingText:
+    def __str__(self):
+        raise RuntimeError("string conversion failed")
+
+
+def test_diagnostic_sanitizer_handles_unprintable_values_and_non_byte_bodies():
+    value = ExplodingText()
+
+    assert transport_module._safe_text(value).endswith(".ExplodingText>")
+    diagnostic = sanitize_diagnostic(
+        code=FailureCode.UNREACHABLE,
+        url="https://example.test/",
+        headers={value: value},
+        body=value,
+    )
+
+    assert diagnostic.url == "https://example.test/"
+    assert len(diagnostic.digest) == 64
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"code": "unreachable"},
+        {"max_length": True},
+        {"max_length": -1},
+    ],
+)
+def test_diagnostic_sanitizer_validates_inputs(kwargs):
+    values = {
+        "code": FailureCode.UNREACHABLE,
+        "url": "https://example.test/",
+    }
+    values.update(kwargs)
+
+    with pytest.raises((TypeError, ValueError)):
+        sanitize_diagnostic(**values)
+
+
+def test_exception_walker_handles_cycles_and_exception_arguments():
+    child = ValueError("child")
+    root = RuntimeError("root", child)
+    root.reason = root
+
+    walked = tuple(transport_module._walk_exceptions(root))
+
+    assert walked[0] is root
+    assert child in walked
+    assert walked.count(root) == 1
+
+
+def test_response_closer_tolerates_missing_or_failing_close_methods():
+    class FailingClose:
+        def close(self):
+            raise OSError("close failed")
+
+    transport_module._close_response(object())
+    transport_module._close_response(FailingClose())
+
+
+def test_failure_result_without_an_exception_is_still_sanitized():
+    result = transport_module._failure_result(
+        state=TransportState.UNAVAILABLE,
+        code=FailureCode.UNREACHABLE,
+        url="https://user:secret@example.test/?token=secret",
+    )
+
+    assert result.diagnostic.url == "https://example.test/"
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"policy": object()},
+        {"limits": object()},
+        {"session_factory": None},
+        {"monotonic": None},
+    ],
+)
+def test_direct_transport_validates_dependencies(kwargs):
+    values = {
+        "policy": explicit_policy(),
+        "limits": TransportLimits(),
+        "session_factory": lambda: RecordingSession(()),
+        "monotonic": lambda: 0.0,
+    }
+    values.update(kwargs)
+
+    with pytest.raises(TypeError):
+        DirectTransport(**values)
+
+
+def test_session_hardening_handles_sessions_without_optional_mappings():
+    session = RecordingSession(())
+    del session.params
+    del session.proxies
+
+    direct_transport(session)
+
+    assert session.trust_env is False
+    assert session.auth is None
+    assert session.cert is None
+    assert session.verify is True
+
+
+def test_zero_body_limit_avoids_stream_reads():
+    response = FakeResponse(200, (AssertionError("body should not be read"),))
+    session = RecordingSession((response,))
+    limits = TransportLimits(connect_timeout=1, overall_timeout=1, max_body_bytes=0)
+
+    result = direct_transport(session, limits=limits).probe("http://127.0.0.1:8443/")
+
+    assert result.body == b""
+    assert response.chunk_reads == 0
+
+
+def test_empty_chunks_are_ignored_and_an_exact_limit_exits_cleanly():
+    response = FakeResponse(200, (b"", b"1234", AssertionError("read past exact limit")))
+    session = RecordingSession((response,))
+    limits = TransportLimits(connect_timeout=1, overall_timeout=1, max_body_bytes=4)
+
+    result = direct_transport(
+        session,
+        limits=limits,
+        monotonic=lambda: 0.0,
+    ).probe("http://127.0.0.1:8443/")
+
+    assert result.body == b"1234"
+    assert response.chunk_reads == 2
+
+
+def test_probe_validates_tls_flag_before_network_access():
+    session = RecordingSession(())
+
+    with pytest.raises(TypeError, match="verify_tls"):
+        direct_transport(session).probe("https://127.0.0.1:8443/", verify_tls=1)
+
+    assert session.calls == []
+
+
+def test_generic_request_failure_closes_attached_response_and_is_typed():
+    attached_response = FakeResponse(500)
+    error = requests.exceptions.RequestException("request failed")
+    error.response = attached_response
+    session = RecordingSession((error,))
+
+    result = direct_transport(session).probe("https://127.0.0.1:8443/")
+
+    assert result.state is TransportState.UNAVAILABLE
+    assert result.failure_code is FailureCode.UNREACHABLE
+    assert attached_response.closed
+
+
+def test_request_url_preserves_query_but_removes_fragment_without_explicit_port():
+    session = RecordingSession((FakeResponse(200),))
+    policy = EgressPolicy(())
+
+    result = direct_transport(session, policy=policy).probe(
+        "https://8.8.8.8/path?token=value#fragment"
+    )
+
+    assert result.state is TransportState.RESPONSE
+    assert session.calls[0]["url"] == "https://8.8.8.8/path?token=value"
+
+
+def test_direct_transport_context_manager_closes_its_session():
+    session = RecordingSession(())
+    transport = direct_transport(session)
+
+    with transport as entered:
+        assert entered is transport
+
+    assert session.closed

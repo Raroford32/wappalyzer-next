@@ -98,8 +98,9 @@ class DirectResponseFetcher:
         session = self.session_factory()
         _harden_session(session)
         response = None
+        redirect_count = 0
         try:
-            for redirect_count in range(self.max_redirects + 1):
+            while True:
                 purpose = RequestPurpose.DIRECT if redirect_count == 0 else RequestPurpose.REDIRECT
                 try:
                     self.policy.authorize(current, purpose)
@@ -131,7 +132,7 @@ class DirectResponseFetcher:
                     self._add_limit(EvidenceLimit.REDIRECT)
                     return DirectResponseOutcome(response, self.limits)
                 current = urljoin(response.url, location)
-            raise AssertionError("redirect loop escaped its explicit bound")
+                redirect_count += 1
         finally:
             session.close()
 
