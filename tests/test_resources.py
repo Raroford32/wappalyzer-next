@@ -19,6 +19,7 @@ from wappalyzer.resources import (
     effective_available_memory,
     effective_cpu_count,
     parse_cpu_set,
+    selected_resource_request,
 )
 
 MIB = 1024**2
@@ -170,7 +171,7 @@ def test_effective_cpu_is_the_minimum_positive_host_affinity_cpuset_and_quota():
             cpuset="0-5",
             cpu_max="250000 100000",
         )
-        == 3
+        == 2
     )
     assert (
         effective_cpu_count(
@@ -194,23 +195,31 @@ def test_effective_cpu_is_the_minimum_positive_host_affinity_cpuset_and_quota():
 
 
 def test_effective_memory_uses_tightest_source_then_keeps_emergency_reserve():
-    cgroup_remaining = 4 * GIB
-    assert effective_available_memory(8 * GIB, str(6 * GIB), str(2 * GIB)) == (
-        cgroup_remaining - max((cgroup_remaining + 4) // 5, 512 * MIB)
-    )
+    cgroup_limit = 6 * GIB
+    cgroup_current = 2 * GIB
+    assert effective_available_memory(
+        8 * GIB,
+        str(cgroup_limit),
+        str(cgroup_current),
+    ) == cgroup_limit - max((cgroup_limit + 4) // 5, 512 * MIB) - cgroup_current
 
     assert effective_available_memory(2 * GIB, "max", "not-needed") == 1536 * MIB
-    assert effective_available_memory(2 * GIB, "broken", "1") == 1536 * MIB
+    assert effective_available_memory(2 * GIB, "broken", "1") is None
     assert effective_available_memory(2 * GIB, str(GIB), str(2 * GIB)) == 0
 
 
 def test_snapshot_captures_current_use_and_all_effective_budgets():
     snapshot = capture_snapshot(FakeProbe(), artifact_path=Path("/artifacts"))
-    remaining_memory = 4 * GIB
+    cgroup_limit = 6 * GIB
+    cgroup_current = 2 * GIB
 
     assert snapshot == ResourceSnapshot(
-        cpu_count=3,
-        memory_bytes=remaining_memory - (remaining_memory + 4) // 5,
+        cpu_count=2,
+        memory_bytes=(
+            cgroup_limit
+            - max((cgroup_limit + 4) // 5, 512 * MIB)
+            - cgroup_current
+        ),
         file_descriptors=1000,
         sockets=1000,
         processes=90,
@@ -243,7 +252,7 @@ def test_snapshot_falls_back_deterministically_for_missing_malformed_and_unlimit
     snapshot = capture_snapshot(probe, artifact_path=Path("/artifacts"))
 
     assert snapshot.cpu_count == 4
-    assert snapshot.memory_bytes == 1536 * MIB
+    assert snapshot.memory_bytes is None
     assert snapshot.file_descriptors is None
     assert snapshot.sockets is None
     assert snapshot.processes is None
@@ -268,7 +277,7 @@ def test_snapshot_records_malformed_finite_memory_and_process_controllers():
 
     snapshot = capture_snapshot(probe, artifact_path=Path("/artifacts"))
 
-    assert snapshot.memory_bytes == 1536 * MIB
+    assert snapshot.memory_bytes is None
     assert snapshot.processes is None
     assert "memory.max" in " ".join(snapshot.reasons)
     assert "pids.current" in " ".join(snapshot.reasons)
@@ -316,8 +325,8 @@ def test_snapshot_uses_tightest_limits_across_cgroup_ancestors():
 
     snapshot = capture_snapshot(HierarchyProbe(), artifact_path=Path("/artifacts"))
 
-    assert snapshot.cpu_count == 2
-    assert snapshot.memory_bytes == 1536 * MIB
+    assert snapshot.cpu_count == 1
+    assert snapshot.memory_bytes == 7 * GIB // 5
     assert snapshot.processes == 15
     assert snapshot.processes_used == 10
 
@@ -363,9 +372,11 @@ def test_autosize_limits_static_by_cpu_and_browser_by_active_page_plus_replaceme
 
     assert plan.snapshot is snapshot
     assert plan.requested == requested
-    assert plan.selected == WorkerCounts(discovery=20, static=4, browser=7)
+    assert plan.selected == WorkerCounts(discovery=2, static=3, browser=6)
     assert plan.insufficiency_reasons == ()
-    assert plan.selected.static <= snapshot.cpu_count
+    assert selected_resource_request(plan.selected, plan.profile).fits_within(
+        snapshot.broker_capacity()
+    )
 
 
 def test_browser_active_page_growth_contracts_only_browser_capacity():
@@ -381,8 +392,9 @@ def test_browser_active_page_growth_contracts_only_browser_capacity():
     )
     adapted = autosize(resource_snapshot(), grown_page, requested=requested)
 
-    assert baseline.selected == WorkerCounts(discovery=20, static=4, browser=7)
-    assert adapted.selected == WorkerCounts(discovery=20, static=4, browser=3)
+    assert baseline.selected == WorkerCounts(discovery=2, static=3, browser=6)
+    assert adapted.selected == WorkerCounts(discovery=8, static=4, browser=2)
+    assert adapted.selected.browser < baseline.selected.browser
 
 
 def test_missing_shared_memory_mount_uses_the_explicit_temp_budget():
@@ -402,7 +414,7 @@ def test_unknown_memory_conservatively_selects_one_browser_worker():
         requested=WorkerCounts(discovery=20, static=20, browser=20),
     )
 
-    assert plan.selected == WorkerCounts(discovery=20, static=4, browser=1)
+    assert plan.selected == WorkerCounts(discovery=1, static=1, browser=1)
 
 
 @pytest.mark.parametrize(
@@ -594,20 +606,23 @@ def test_blocking_acquire_is_fifo_and_waiting_acquisition_can_be_cancelled():
     assert broker.available == ResourceRequest(cpu=1)
 
 
-def test_capacity_adaptation_only_applies_while_idle_and_preserves_active_leases():
+def test_capacity_adaptation_preserves_active_leases_and_blocks_until_below_target():
     initial = ResourceRequest(cpu=2, memory_bytes=200)
     expanded = ResourceRequest(cpu=4, memory_bytes=400)
     broker = ResourceBroker(initial)
     lease = broker.acquire(ResourceRequest(cpu=1, memory_bytes=100))
 
-    assert broker.adapt_capacity(expanded) is False
-    assert broker.capacity == initial
+    contracted = ResourceRequest(cpu=0, memory_bytes=50)
+    assert broker.adapt_capacity(contracted) is True
+    assert broker.capacity == contracted
     assert lease.active
     assert broker.in_use == ResourceRequest(cpu=1, memory_bytes=100)
+    assert broker.available == ResourceRequest()
+    assert broker.try_acquire(ResourceRequest()) is None
 
-    lease.release()
     assert broker.adapt_capacity(expanded) is True
     assert broker.capacity == expanded
+    lease.release()
     assert broker.available == expanded
 
 
